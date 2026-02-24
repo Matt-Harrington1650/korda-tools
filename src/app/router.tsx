@@ -1,22 +1,21 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AppLayout } from '../components/AppLayout';
+import { createBrowserRouter } from 'react-router-dom';
+import { AppShell } from './AppShell';
 import { AddToolPage } from '../pages/AddToolPage';
 import { DashboardPage } from '../pages/DashboardPage';
+import { NotFoundPage } from '../pages/NotFoundPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { ToolDetailPage } from '../pages/ToolDetailPage';
 
-export function AppRouter() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="tools/new" element={<AddToolPage />} />
-          <Route path="tools/:toolId" element={<ToolDetailPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-        <Route path="*" element={<Navigate replace to="/" />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
+export const appRouter = createBrowserRouter([
+  {
+    path: '/',
+    element: <AppShell />,
+    children: [
+      { index: true, element: <DashboardPage /> },
+      { path: 'tools/new', element: <AddToolPage /> },
+      { path: 'tools/:toolId', element: <ToolDetailPage /> },
+      { path: 'settings', element: <SettingsPage /> },
+      { path: '*', element: <NotFoundPage /> },
+    ],
+  },
+]);

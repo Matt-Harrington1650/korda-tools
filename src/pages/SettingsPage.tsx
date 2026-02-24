@@ -1,10 +1,8 @@
-import { PageShell } from '../components/PageShell';
-import { SettingsPanel } from '../features/settings/components/SettingsPanel';
-
 export function SettingsPage() {
   return (
-    <PageShell title="Settings" description="Project-level settings placeholder for future provider/plugin configuration.">
-      <SettingsPanel />
-    </PageShell>
+    <section className="rounded-lg border border-slate-200 bg-white p-6">
+      <h2 className="text-xl font-semibold">Settings</h2>
+      <p className="mt-2 text-sm text-slate-600">Settings page placeholder.</p>
+    </section>
   );
 }
