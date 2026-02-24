@@ -1,5 +1,5 @@
 export interface StorageEngine<T> {
-  load: () => T | null;
+  load: () => T;
   save: (value: T) => void;
   clear: () => void;
 }

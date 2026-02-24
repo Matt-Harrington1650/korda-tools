@@ -3,14 +3,19 @@ import type { CreateToolInput, Tool, UpdateToolInput } from '../../../domain/too
 import { createToolId } from '../../../lib/ids';
 import { createToolInputSchema, toolSchema, toolSchemaVersion, updateToolInputSchema } from '../../../schemas/tool';
 import { toolRegistrySchema, toolRegistrySchemaVersion } from '../../../schemas/toolRegistry';
-import { createLocalStoragePersistence } from '../../../storage/localStoragePersistence';
+import { createLocalStorageEngine } from '../../../storage/localStorageEngine';
+import { migrateTools } from '../../../storage/migrations';
+import { STORAGE_KEYS } from '../../../storage/keys';
 import { seedTools } from '../seedTools';
 
-const TOOL_REGISTRY_STORAGE_KEY = 'ai-tool-hub/tool-registry/v1';
-
-const persistence = createLocalStoragePersistence({
-  key: TOOL_REGISTRY_STORAGE_KEY,
+const persistence = createLocalStorageEngine({
+  key: STORAGE_KEYS.tools,
   schema: toolRegistrySchema,
+  defaultValue: {
+    version: toolRegistrySchemaVersion,
+    tools: seedTools,
+  },
+  migrate: migrateTools,
 });
 
 const persistTools = (tools: Tool[]): void => {
@@ -22,8 +27,7 @@ const persistTools = (tools: Tool[]): void => {
 
 const resolveInitialTools = (): Tool[] => {
   const persisted = persistence.load();
-
-  if (persisted?.tools.length) {
+  if (persisted.tools.length) {
     return persisted.tools;
   }
 
