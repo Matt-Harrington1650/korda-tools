@@ -4,6 +4,7 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { EmptyState } from '../components/EmptyState';
+import { useToolExecution } from '../features/tools/hooks';
 import { useToolRegistryStore } from '../features/tools/store/toolRegistryStore';
 import { authTypeSchema, httpMethodSchema, toolStatusSchema, toolTypeSchema } from '../schemas/tool';
 
@@ -85,6 +86,7 @@ export function ToolDetailPage() {
 
   const selectedToolType = watch('toolType');
   const needsMethod = selectedToolType === 'rest_api' || selectedToolType === 'webhook';
+  const { executeAction, isExecuting, activeAction, lastResult, localLogs } = useToolExecution(tool);
 
   const onSubmit = (values: ToolDetailFormValues): void => {
     if (!tool) {
@@ -299,20 +301,83 @@ export function ToolDetailPage() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-base font-semibold text-slate-900">Execution</h3>
-        <p className="mt-1 text-sm text-slate-600">Execution controls will be wired to adapter pipeline in the next step.</p>
+        <p className="mt-1 text-sm text-slate-600">Run execution through the adapter pipeline.</p>
         <div className="mt-3 flex items-center gap-2">
-          <button className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700" type="button">
-            Test Connection
+          <button
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isExecuting}
+            onClick={() => {
+              void executeAction('test');
+            }}
+            type="button"
+          >
+            {isExecuting && activeAction === 'test' ? 'Testing...' : 'Test Connection'}
           </button>
-          <button className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700" type="button">
-            Run Tool
+          <button
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isExecuting}
+            onClick={() => {
+              void executeAction('run');
+            }}
+            type="button"
+          >
+            {isExecuting && activeAction === 'run' ? 'Running...' : 'Run Tool'}
           </button>
         </div>
+
+        {lastResult ? (
+          <div
+            className={`mt-4 rounded-md border p-3 text-sm ${
+              lastResult.ok
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-rose-200 bg-rose-50 text-rose-900'
+            }`}
+          >
+            <p className="font-medium">{lastResult.ok ? 'Execution succeeded' : 'Execution failed'}</p>
+            <p className="mt-1">Request: {lastResult.requestSummary || 'n/a'}</p>
+            <p className="mt-1">Duration: {lastResult.durationMs} ms</p>
+            {lastResult.ok ? (
+              <>
+                <p className="mt-1">Response: {lastResult.responseSummary}</p>
+                <pre className="mt-2 overflow-auto rounded bg-white/70 p-2 text-xs">{lastResult.response.bodyPreview}</pre>
+              </>
+            ) : (
+              <>
+                <p className="mt-1">Error: {lastResult.error.message}</p>
+                <pre className="mt-2 overflow-auto rounded bg-white/70 p-2 text-xs">{lastResult.error.details}</pre>
+                {lastResult.error.stack ? (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium">Developer error stack</summary>
+                    <pre className="mt-2 overflow-auto rounded bg-white/70 p-2 text-xs">{lastResult.error.stack}</pre>
+                  </details>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-base font-semibold text-slate-900">Request / Response Logs</h3>
-        <p className="mt-1 text-sm text-slate-600">No runs recorded yet.</p>
+        {localLogs.length === 0 ? (
+          <p className="mt-1 text-sm text-slate-600">No runs recorded yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {localLogs.map((log) => (
+              <li className="rounded-md border border-slate-200 p-3" key={log.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-900">
+                    {log.actionType === 'test' ? 'Test Connection' : 'Run Tool'} {log.success ? 'succeeded' : 'failed'}
+                  </p>
+                  <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()}</p>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">{log.requestSummary}</p>
+                <p className="mt-1 text-xs text-slate-600">{log.responseSummary}</p>
+                {log.errorDetails ? <pre className="mt-2 overflow-auto rounded bg-slate-50 p-2 text-xs text-rose-700">{log.errorDetails}</pre> : null}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
