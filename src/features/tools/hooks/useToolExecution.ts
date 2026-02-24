@@ -4,9 +4,8 @@ import type { Tool } from '../../../domain/tool';
 import { executeToolWithPipeline } from '../../../execution';
 import type { ExecutionActionType, ExecutionResult } from '../../../execution';
 import { previewText } from '../../../execution/helpers';
+import { useSettingsStore } from '../../settings/store';
 import { useToolRunLogStore } from '../store/toolRunLogStore';
-
-const DEFAULT_TIMEOUT_MS = 10_000;
 
 const REDACTED = '[REDACTED]';
 
@@ -49,6 +48,7 @@ const toRequestSummary = (result: ExecutionResult): ToolRunRequestSummary => {
 };
 
 export const useToolExecution = (tool: Tool | undefined) => {
+  const defaultTimeoutMs = useSettingsStore((state) => state.settings.defaultTimeoutMs);
   const [isExecuting, setIsExecuting] = useState(false);
   const [activeAction, setActiveAction] = useState<ExecutionActionType | null>(null);
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null);
@@ -75,7 +75,7 @@ export const useToolExecution = (tool: Tool | undefined) => {
       const result = await executeToolWithPipeline({
         tool,
         actionType,
-        timeoutMs: DEFAULT_TIMEOUT_MS,
+        timeoutMs: defaultTimeoutMs,
       });
 
       setLastResult(result);

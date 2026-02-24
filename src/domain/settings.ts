@@ -1,5 +1,7 @@
 export type {
-  DashboardLayout,
+  CredentialReferences,
+  ProviderDefaults,
   Settings,
+  SettingsFormValues,
   ThemePreference,
 } from '../schemas/settingsSchemas';
