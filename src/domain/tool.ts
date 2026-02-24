@@ -1,7 +1,9 @@
 export type {
   AuthType,
   CreateToolInput,
+  HttpMethod,
   Tool,
+  ToolHeader,
   ToolStatus,
   ToolType,
   UpdateToolInput,

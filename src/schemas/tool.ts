@@ -22,6 +22,19 @@ export const toolStatusSchema = z.enum([
   'disabled',
 ]);
 
+export const httpMethodSchema = z.enum([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+]);
+
+export const toolHeaderSchema = z.object({
+  key: z.string().trim().min(1).max(120),
+  value: z.string().trim().min(1).max(500),
+});
+
 export const toolSchema = z.object({
   id: z.string().min(1),
   version: z.literal(toolSchemaVersion),
@@ -32,6 +45,9 @@ export const toolSchema = z.object({
   type: toolTypeSchema,
   authType: authTypeSchema,
   endpoint: z.string().trim().url(),
+  method: httpMethodSchema.nullable(),
+  headers: z.array(toolHeaderSchema),
+  samplePayload: z.string().trim(),
   status: toolStatusSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -45,6 +61,9 @@ export const createToolInputSchema = z.object({
   type: toolTypeSchema,
   authType: authTypeSchema,
   endpoint: z.string().trim().url(),
+  method: httpMethodSchema.nullable().default(null),
+  headers: z.array(toolHeaderSchema).default([]),
+  samplePayload: z.string().trim().default(''),
   status: toolStatusSchema,
 });
 
@@ -54,5 +73,7 @@ export type Tool = z.infer<typeof toolSchema>;
 export type ToolType = z.infer<typeof toolTypeSchema>;
 export type AuthType = z.infer<typeof authTypeSchema>;
 export type ToolStatus = z.infer<typeof toolStatusSchema>;
+export type HttpMethod = z.infer<typeof httpMethodSchema>;
+export type ToolHeader = z.infer<typeof toolHeaderSchema>;
 export type CreateToolInput = z.infer<typeof createToolInputSchema>;
 export type UpdateToolInput = z.infer<typeof updateToolInputSchema>;

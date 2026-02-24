@@ -1,1 +1,5 @@
-// TODO(extension): add typed React Hook Form modules for tool CRUD flows.
+export {
+  addToolFormSchema,
+  addToolHeaderRowSchema,
+} from './addToolFormSchema';
+export type { AddToolFormValues } from './addToolFormSchema';
