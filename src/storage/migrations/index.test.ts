@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { chatThreadSchemaVersion } from '../../schemas/chatSchemas';
 import { settingsSchemaVersion } from '../../schemas/settingsSchemas';
+import { scheduleSchemaVersion, scheduledRunLogSchemaVersion } from '../../schemas/scheduleSchemas';
 import { toolRunLogSchemaVersion } from '../../schemas/logSchemas';
 import { toolSchemaVersion } from '../../schemas/tool';
 import { toolRegistrySchemaVersion } from '../../schemas/toolRegistry';
-import { migrateSettings, migrateToolRunLogs, migrateTools } from './index';
+import {
+  workflowNodeRunSchemaVersion,
+  workflowRunSchemaVersion,
+  workflowSchemaVersion,
+} from '../../schemas/workflowSchemas';
+import {
+  migrateSettings,
+  migrateToolRunLogs,
+  migrateTools,
+  migrateWorkflowNodeRuns,
+  migrateWorkflowRuns,
+  migrateWorkflows,
+  migrateChatThreads,
+  migrateSchedules,
+  migrateScheduledRunLogs,
+} from './index';
 
 describe('migrateTools', () => {
   it('returns current version data unchanged', () => {
@@ -192,5 +209,55 @@ describe('migrateToolRunLogs', () => {
   it('returns null for malformed or unknown versions', () => {
     expect(migrateToolRunLogs({ version: 2, entries: [] })).toBeNull();
     expect(migrateToolRunLogs({ version: 0, entries: 'bad' })).toBeNull();
+  });
+});
+
+describe('workflow migration helpers', () => {
+  it('returns current workflow payload unchanged', () => {
+    const current = {
+      version: workflowSchemaVersion,
+      workflows: [],
+    };
+    expect(migrateWorkflows(current)).toEqual(current);
+  });
+
+  it('returns current workflow run payload unchanged', () => {
+    const current = {
+      version: workflowRunSchemaVersion,
+      entries: [],
+    };
+    expect(migrateWorkflowRuns(current)).toEqual(current);
+  });
+
+  it('returns current workflow node run payload unchanged', () => {
+    const current = {
+      version: workflowNodeRunSchemaVersion,
+      entries: [],
+    };
+    expect(migrateWorkflowNodeRuns(current)).toEqual(current);
+  });
+
+  it('returns current schedule payload unchanged', () => {
+    const current = {
+      version: scheduleSchemaVersion,
+      schedules: [],
+    };
+    expect(migrateSchedules(current)).toEqual(current);
+  });
+
+  it('returns current scheduled run log payload unchanged', () => {
+    const current = {
+      version: scheduledRunLogSchemaVersion,
+      entries: [],
+    };
+    expect(migrateScheduledRunLogs(current)).toEqual(current);
+  });
+
+  it('returns current chat thread payload unchanged', () => {
+    const current = {
+      version: chatThreadSchemaVersion,
+      threads: [],
+    };
+    expect(migrateChatThreads(current)).toEqual(current);
   });
 });

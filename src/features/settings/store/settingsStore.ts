@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Settings, SettingsFormValues } from '../../../domain/settings';
 import { settingsFormSchema, settingsSchema, settingsSchemaVersion } from '../../../schemas/settingsSchemas';
-import { createLocalStorageEngine } from '../../../storage/localStorageEngine';
+import { createStorageEngine, hasAsyncLoad } from '../../../storage/createStorageEngine';
 import { migrateSettings } from '../../../storage/migrations';
 import { STORAGE_KEYS } from '../../../storage/keys';
 
@@ -19,9 +19,15 @@ const defaultSettings: Settings = {
     webhookSecretRef: 'WEBHOOK_SECRET',
     customHeaderRef: 'CUSTOM_HEADER_TOKEN',
   },
+  scheduler: {
+    enabled: false,
+    notificationsEnabled: true,
+    notifyOnSuccess: false,
+    notifyOnFailure: true,
+  },
 };
 
-const persistence = createLocalStorageEngine({
+const persistence = createStorageEngine({
   key: STORAGE_KEYS.settings,
   schema: settingsSchema,
   defaultValue: defaultSettings,
@@ -36,6 +42,7 @@ type SettingsState = {
   settings: Settings;
   saveSettings: (values: SettingsFormValues) => Settings;
   resetSettings: () => void;
+  replaceSettings: (settings: Settings) => Settings;
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -58,4 +65,23 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     persistSettings(defaultSettings);
     set({ settings: defaultSettings });
   },
+  replaceSettings: (settings) => {
+    const parsed = settingsSchema.parse(settings);
+    persistSettings(parsed);
+    set({ settings: parsed });
+    return parsed;
+  },
 }));
+
+if (hasAsyncLoad(persistence)) {
+  void persistence
+    .loadAsync()
+    .then((settings) => {
+      useSettingsStore.setState({
+        settings,
+      });
+    })
+    .catch(() => {
+      // TODO(extension): add telemetry hook for async settings hydration failures.
+    });
+}

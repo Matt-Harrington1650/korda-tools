@@ -71,3 +71,7 @@ export default defineConfig([
   },
 ])
 ```
+
+## Release docs
+
+- [Windows release and signing](docs/windows-release.md)

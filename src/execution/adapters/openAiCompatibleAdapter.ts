@@ -13,6 +13,8 @@ export const openAiCompatibleAdapter: ToolAdapter = {
     canRun: true,
     supportsHeaders: true,
     supportsPayload: true,
+    supportsFiles: false,
+    supportsStreaming: false,
   },
   validateConfig: (tool) => {
     if (!tool.endpoint) {

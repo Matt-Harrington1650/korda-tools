@@ -1,25 +1,73 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { EmptyState } from '../components/EmptyState';
+import { createSecretVault } from '../desktop';
+import type { CredentialRef } from '../domain/credential';
+import { createCredentialRef, listCredentialRefs, upsertCredentialRef } from '../features/credentials/credentialService';
 import { useToolExecution } from '../features/tools/hooks';
 import { useToolRegistryStore } from '../features/tools/store/toolRegistryStore';
-import { authTypeSchema, httpMethodSchema, toolStatusSchema, toolTypeSchema } from '../schemas/tool';
+import {
+  createDefaultPluginConfig,
+  mapLegacyToolToPluginConfig,
+  pluginRegistry,
+  projectPluginConfigToLegacy,
+  validatePluginConfig,
+} from '../plugins';
+import { authTypeSchema, toolStatusSchema, toolTypeSchema } from '../schemas/tool';
 
 const toolDetailFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(80),
   description: z.string().trim().max(240),
   category: z.string().trim().min(1, 'Category is required').max(40),
   toolType: toolTypeSchema,
-  endpointUrl: z.string().trim().url('Endpoint URL must be valid'),
   authType: authTypeSchema,
-  method: httpMethodSchema.nullable(),
-  headers: z.array(z.object({ key: z.string().trim(), value: z.string().trim() })),
-  samplePayload: z.string().trim(),
+  customHeaderName: z.string().trim(),
+  credentialMode: z.enum(['existing', 'new']),
+  credentialRefId: z.string().trim(),
+  credentialLabel: z.string().trim(),
+  credentialSecret: z.string(),
+  rotateSecret: z.string(),
   tags: z.string().trim(),
   status: toolStatusSchema,
+}).superRefine((value, context) => {
+  if (value.authType === 'custom_header' && value.customHeaderName.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['customHeaderName'],
+      message: 'Custom header name is required.',
+    });
+  }
+
+  if (value.authType !== 'none') {
+    if (value.credentialMode === 'existing' && value.credentialRefId.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['credentialRefId'],
+        message: 'Select an existing credential.',
+      });
+    }
+
+    if (value.credentialMode === 'new') {
+      if (value.credentialLabel.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['credentialLabel'],
+          message: 'Credential label is required.',
+        });
+      }
+
+      if (value.credentialSecret.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['credentialSecret'],
+          message: 'Secret value is required for a new credential.',
+        });
+      }
+    }
+  }
 });
 
 type ToolDetailFormValues = z.infer<typeof toolDetailFormSchema>;
@@ -32,12 +80,14 @@ export function ToolDetailPage() {
   const getToolById = useToolRegistryStore((state) => state.getToolById);
   const updateTool = useToolRegistryStore((state) => state.updateTool);
   const deleteTool = useToolRegistryStore((state) => state.deleteTool);
+  const [credentials, setCredentials] = useState<CredentialRef[]>([]);
+  const [submitError, setSubmitError] = useState('');
+  const secretVault = createSecretVault();
 
   const tool = toolId ? getToolById(toolId) : undefined;
 
   const {
     register,
-    control,
     watch,
     reset,
     handleSubmit,
@@ -49,20 +99,20 @@ export function ToolDetailPage() {
       description: '',
       category: '',
       toolType: 'rest_api',
-      endpointUrl: 'https://api.example.com',
       authType: 'none',
-      method: 'GET',
-      headers: [{ key: '', value: '' }],
-      samplePayload: '',
+      customHeaderName: '',
+      credentialMode: 'existing',
+      credentialRefId: '',
+      credentialLabel: '',
+      credentialSecret: '',
+      rotateSecret: '',
       tags: '',
       status: 'configured',
     },
   });
-
-  const headersFieldArray = useFieldArray({
-    control,
-    name: 'headers',
-  });
+  const [pluginConfig, setPluginConfig] = useState<Record<string, unknown>>(createDefaultPluginConfig('rest_api'));
+  const [pluginErrors, setPluginErrors] = useState<string[]>([]);
+  const previousToolTypeRef = useRef<string>('rest_api');
 
   useEffect(() => {
     if (!tool) {
@@ -74,42 +124,162 @@ export function ToolDetailPage() {
       description: tool.description,
       category: tool.category,
       toolType: tool.type,
-      endpointUrl: tool.endpoint,
       authType: tool.authType,
-      method: tool.method,
-      headers: tool.headers.length ? tool.headers : [{ key: '', value: '' }],
-      samplePayload: tool.samplePayload,
+      customHeaderName: tool.customHeaderName ?? '',
+      credentialMode: 'existing',
+      credentialRefId: tool.credentialRefId ?? '',
+      credentialLabel: '',
+      credentialSecret: '',
+      rotateSecret: '',
       tags: toTagText(tool.tags),
       status: tool.status,
     });
+    setPluginConfig(tool.config && Object.keys(tool.config).length > 0 ? tool.config : mapLegacyToolToPluginConfig(tool));
+    setPluginErrors([]);
+    previousToolTypeRef.current = tool.type;
   }, [reset, tool]);
 
-  const selectedToolType = watch('toolType');
-  const needsMethod = selectedToolType === 'rest_api' || selectedToolType === 'webhook';
-  const { executeAction, isExecuting, activeAction, lastResult, logs } = useToolExecution(tool);
+  useEffect(() => {
+    let mounted = true;
 
-  const onSubmit = (values: ToolDetailFormValues): void => {
+    void listCredentialRefs().then((items) => {
+      if (mounted) {
+        setCredentials(items);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selectedToolType = watch('toolType');
+  const selectedAuthType = watch('authType');
+  const credentialMode = watch('credentialMode');
+  const selectedCredentialRefId = watch('credentialRefId');
+  const selectedPluginManifest = pluginRegistry.getManifestByToolType(selectedToolType);
+  const ConfigPanel = selectedPluginManifest?.ui?.ConfigPanel;
+
+  useEffect(() => {
+    if (previousToolTypeRef.current === selectedToolType) {
+      return;
+    }
+
+    previousToolTypeRef.current = selectedToolType;
+    setPluginErrors([]);
+    setPluginConfig(createDefaultPluginConfig(selectedToolType));
+  }, [selectedToolType]);
+  const {
+    executeAction,
+    cancelExecution,
+    isExecuting,
+    activeAction,
+    lastResult,
+    executionStatus,
+    progress,
+    streamedOutput,
+    attachments,
+    fileMessage,
+    fileError,
+    isExportingOutput,
+    durationMs,
+    logs,
+    addAttachments,
+    removeAttachment,
+    clearAttachments,
+    exportRunOutput,
+  } = useToolExecution(tool);
+  const executionManifest = tool ? pluginRegistry.getManifestByToolType(tool.type) : null;
+  const executionSupportsFiles = executionManifest?.capabilities.supportsFiles === true;
+  const credentialOptions = useMemo(() => {
+    const options = [...credentials];
+
+    if (selectedCredentialRefId && !options.some((credential) => credential.id === selectedCredentialRefId)) {
+      options.unshift({
+        id: selectedCredentialRefId,
+        provider: 'unknown',
+        label: `Unknown credential (${selectedCredentialRefId})`,
+        createdAt: Date.now(),
+        lastUsedAt: null,
+      });
+    }
+
+    return options;
+  }, [credentials, selectedCredentialRefId]);
+
+  const onSubmit = async (values: ToolDetailFormValues): Promise<void> => {
     if (!tool) {
       return;
     }
+
+    setSubmitError('');
+    setPluginErrors([]);
+
+    if (!selectedPluginManifest) {
+      setSubmitError(`Plugin for tool type "${values.toolType}" is not registered.`);
+      return;
+    }
+
+    let credentialRefId: string | undefined;
+
+    if (values.authType !== 'none') {
+      if (values.credentialMode === 'new') {
+        const nextCredential = createCredentialRef(values.credentialLabel.trim(), 'keyring');
+
+        try {
+          await secretVault.setSecret(nextCredential.id, values.credentialSecret);
+          await upsertCredentialRef(nextCredential);
+          credentialRefId = nextCredential.id;
+          setCredentials((current) => [nextCredential, ...current.filter((entry) => entry.id !== nextCredential.id)]);
+        } catch (error) {
+          setSubmitError(error instanceof Error ? error.message : 'Failed to save credential secret.');
+          return;
+        }
+      } else {
+        credentialRefId = values.credentialRefId.trim();
+
+        if (values.rotateSecret.trim().length > 0) {
+          try {
+            await secretVault.setSecret(credentialRefId, values.rotateSecret);
+          } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Failed to rotate secret.');
+            return;
+          }
+        }
+      }
+    }
+
+    const nextPluginErrors = validatePluginConfig(values.toolType, pluginConfig);
+    if (nextPluginErrors.length > 0) {
+      setPluginErrors(nextPluginErrors);
+      return;
+    }
+
+    const configResult = selectedPluginManifest.configSchema.safeParse(pluginConfig);
+    if (!configResult.success) {
+      setPluginErrors(configResult.error.issues.map((issue) => issue.message));
+      return;
+    }
+
+    const normalizedConfig = configResult.data as Record<string, unknown>;
+    const projection = projectPluginConfigToLegacy(values.toolType, normalizedConfig);
 
     updateTool(tool.id, {
       name: values.name.trim(),
       description: values.description.trim(),
       category: values.category.trim(),
       type: values.toolType,
-      endpoint: values.endpointUrl.trim(),
       authType: values.authType,
-      method: needsMethod ? values.method : null,
-      headers: values.headers
-        .map((header) => ({ key: header.key.trim(), value: header.value.trim() }))
-        .filter((header) => header.key.length > 0 && header.value.length > 0),
-      samplePayload: values.samplePayload.trim(),
+      credentialRefId,
+      customHeaderName: values.authType === 'custom_header' ? values.customHeaderName.trim() : undefined,
+      configVersion: selectedPluginManifest.version,
+      config: normalizedConfig,
+      ...projection,
       tags: values.tags
         .split(',')
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0),
-      status: values.status,
+      status: values.authType !== 'none' && !credentialRefId ? 'missing_credentials' : values.status,
     });
   };
 
@@ -217,26 +387,60 @@ export function ToolDetailPage() {
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {selectedAuthType === 'custom_header' ? (
             <label className="space-y-1">
-              <span className="text-sm font-medium text-slate-700">Endpoint URL</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('endpointUrl')} />
-              <p className="text-xs text-rose-600">{errors.endpointUrl?.message}</p>
+              <span className="text-sm font-medium text-slate-700">Custom Header Name</span>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="X-API-Key" {...register('customHeaderName')} />
+              <p className="text-xs text-rose-600">{errors.customHeaderName?.message}</p>
             </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-slate-700">Method</span>
-              <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('method')}>
-                <option value="">Select</option>
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="PATCH">PATCH</option>
-                <option value="DELETE">DELETE</option>
-              </select>
-              <p className="text-xs text-rose-600">{errors.method?.message}</p>
-              {!needsMethod ? <p className="text-xs text-slate-500">Optional for this tool type.</p> : null}
-            </label>
-          </div>
+          ) : null}
+
+          {selectedAuthType !== 'none' ? (
+            <div className="space-y-3 rounded-md border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold text-slate-900">Credential</h4>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Credential Source</span>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialMode')}>
+                  <option value="existing">Use existing</option>
+                  <option value="new">Create new</option>
+                </select>
+              </label>
+
+              {credentialMode === 'existing' ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-slate-700">Existing Credential</span>
+                    <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialRefId')}>
+                      <option value="">Select credential</option>
+                      {credentialOptions.map((credential) => (
+                        <option key={credential.id} value={credential.id}>
+                          {credential.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-rose-600">{errors.credentialRefId?.message}</p>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-slate-700">Rotate Secret (optional)</span>
+                    <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="password" {...register('rotateSecret')} />
+                  </label>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-slate-700">Credential Label</span>
+                    <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialLabel')} />
+                    <p className="text-xs text-rose-600">{errors.credentialLabel?.message}</p>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-slate-700">Secret Value</span>
+                    <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="password" {...register('credentialSecret')} />
+                    <p className="text-xs text-rose-600">{errors.credentialSecret?.message}</p>
+                  </label>
+                </div>
+              )}
+            </div>
+          ) : null}
 
           <label className="space-y-1">
             <span className="text-sm font-medium text-slate-700">Tags</span>
@@ -245,49 +449,22 @@ export function ToolDetailPage() {
           </label>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">Headers</span>
-              <button
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
-                onClick={() => {
-                  headersFieldArray.append({ key: '', value: '' });
+            <h4 className="text-sm font-semibold text-slate-900">Plugin Configuration</h4>
+            {ConfigPanel ? (
+              <ConfigPanel
+                disabled={isSubmitting}
+                errors={pluginErrors}
+                onChange={(next) => {
+                  setPluginConfig(next);
                 }}
-                type="button"
-              >
-                Add Header
-              </button>
-            </div>
-
-            {headersFieldArray.fields.map((field, index) => (
-              <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" key={field.id}>
-                <input
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="Header key"
-                  {...register(`headers.${index}.key`)}
-                />
-                <input
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="Header value"
-                  {...register(`headers.${index}.value`)}
-                />
-                <button
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
-                  onClick={() => {
-                    headersFieldArray.remove(index);
-                  }}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+                value={pluginConfig}
+              />
+            ) : (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                No plugin config panel registered for this tool type.
+              </p>
+            )}
           </div>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-slate-700">Sample Payload (JSON text)</span>
-            <textarea className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" rows={4} {...register('samplePayload')} />
-            <p className="text-xs text-slate-500">Optional sample body used by execution adapters.</p>
-          </label>
 
           <button
             className="inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-70"
@@ -296,12 +473,60 @@ export function ToolDetailPage() {
           >
             Save Changes
           </button>
+          {submitError ? <p className="text-sm text-rose-600">{submitError}</p> : null}
         </form>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-base font-semibold text-slate-900">Execution</h3>
         <p className="mt-1 text-sm text-slate-600">Run execution through the adapter pipeline.</p>
+        {executionSupportsFiles ? (
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isExecuting}
+                onClick={() => {
+                  void addAttachments();
+                }}
+                type="button"
+              >
+                Attach Files
+              </button>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isExecuting || attachments.length === 0}
+                onClick={clearAttachments}
+                type="button"
+              >
+                Clear Files
+              </button>
+            </div>
+            {attachments.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {attachments.map((file) => (
+                  <li className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white px-3 py-2 text-xs" key={file.id}>
+                    <span className="truncate text-slate-700">
+                      {file.name} ({file.size} bytes)
+                    </span>
+                    <button
+                      className="rounded border border-rose-200 px-2 py-1 text-rose-700 hover:bg-rose-50 disabled:opacity-70"
+                      disabled={isExecuting}
+                      onClick={() => {
+                        removeAttachment(file.id);
+                      }}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">No files attached.</p>
+            )}
+          </div>
+        ) : null}
         <div className="mt-3 flex items-center gap-2">
           <button
             className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
@@ -323,6 +548,55 @@ export function ToolDetailPage() {
           >
             {isExecuting && activeAction === 'run' ? 'Running...' : 'Run Tool'}
           </button>
+          {isExecuting ? (
+            <button
+              className="rounded-md border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
+              onClick={cancelExecution}
+              type="button"
+            >
+              Cancel
+            </button>
+          ) : null}
+          <button
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isExecuting || isExportingOutput}
+            onClick={() => {
+              void exportRunOutput();
+            }}
+            type="button"
+          >
+            {isExportingOutput ? 'Exporting...' : 'Export Output'}
+          </button>
+        </div>
+        {fileMessage ? <p className="mt-2 text-xs text-emerald-700">{fileMessage}</p> : null}
+        {fileError ? <p className="mt-2 text-xs text-rose-700">{fileError}</p> : null}
+
+        <div className="mt-4 grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 md:grid-cols-3">
+          <p>
+            <span className="font-medium text-slate-900">Status:</span> {executionStatus}
+          </p>
+          <p>
+            <span className="font-medium text-slate-900">Action:</span> {activeAction ? (activeAction === 'test' ? 'Test Connection' : 'Run Tool') : 'Idle'}
+          </p>
+          <p>
+            <span className="font-medium text-slate-900">Duration:</span> {(isExecuting ? durationMs : lastResult?.durationMs ?? durationMs)} ms
+          </p>
+          {progress !== null ? (
+            <p className="md:col-span-3">
+              <span className="font-medium text-slate-900">Progress:</span> {progress}%
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Live Output</p>
+          {streamedOutput ? (
+            <pre className="mt-2 max-h-56 overflow-auto rounded border border-slate-200 bg-slate-950 p-3 text-xs text-emerald-200">
+              {streamedOutput}
+            </pre>
+          ) : (
+            <p className="mt-2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-500">No output yet.</p>
+          )}
         </div>
 
         {lastResult ? (

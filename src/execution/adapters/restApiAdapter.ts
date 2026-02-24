@@ -12,6 +12,8 @@ export const restApiAdapter: ToolAdapter = {
     canRun: true,
     supportsHeaders: true,
     supportsPayload: true,
+    supportsFiles: false,
+    supportsStreaming: false,
   },
   validateConfig: (tool) => {
     const errors: string[] = [];

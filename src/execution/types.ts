@@ -1,4 +1,4 @@
-import type { Tool, ToolType } from '../domain/tool';
+import type { Tool, ToolRetryPolicy, ToolType } from '../domain/tool';
 
 export type ExecutionActionType = 'test' | 'run';
 
@@ -7,6 +7,16 @@ export type ToolCapabilityFlags = {
   canRun: boolean;
   supportsHeaders: boolean;
   supportsPayload: boolean;
+  supportsFiles?: boolean;
+  supportsStreaming?: boolean;
+};
+
+export type ExecutionAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  dataBase64: string;
 };
 
 export type ExecutionRequest = {
@@ -14,6 +24,7 @@ export type ExecutionRequest = {
   url: string;
   headers: Record<string, string>;
   body: string | null;
+  attachments?: ExecutionAttachment[];
 };
 
 export type RawExecutionResponse = {
@@ -33,6 +44,7 @@ export type AdapterBuildRequestInput = {
   tool: Tool;
   actionType: ExecutionActionType;
   payload?: string;
+  attachments?: ExecutionAttachment[];
 };
 
 export type AdapterExecutionContext = {
@@ -46,6 +58,34 @@ export type ToolExecutionError = {
   message: string;
   details: string;
   stack?: string;
+};
+
+export type ExecutionStatusPhase =
+  | 'queued'
+  | 'running'
+  | 'validating_config'
+  | 'building_request'
+  | 'executing'
+  | 'normalizing_response'
+  | 'completed'
+  | 'cancelled';
+
+export type ExecutionStatusEvent = {
+  type: 'status';
+  phase: ExecutionStatusPhase;
+  message?: string;
+};
+
+export type ExecutionProgressEvent = {
+  type: 'progress';
+  progress: number;
+  message?: string;
+};
+
+export type ExecutionChunkEvent = {
+  type: 'chunk';
+  chunk: string;
+  mimeType?: string;
 };
 
 export type ExecutionSuccessResult = {
@@ -71,3 +111,38 @@ export type ExecutionErrorResult = {
 };
 
 export type ExecutionResult = ExecutionSuccessResult | ExecutionErrorResult;
+
+export type ExecutionResultEvent = {
+  type: 'result';
+  result: ExecutionResult;
+};
+
+export type ExecutionErrorEvent = {
+  type: 'error';
+  error: ToolExecutionError;
+};
+
+export type ExecutionEvent =
+  | ExecutionStatusEvent
+  | ExecutionProgressEvent
+  | ExecutionChunkEvent
+  | ExecutionResultEvent
+  | ExecutionErrorEvent;
+
+export type PipelineRetryPolicy = ToolRetryPolicy;
+
+export type ExecutionPipelineConfig = {
+  defaultTimeoutMs: number;
+  globalMaxConcurrentRuns: number;
+  defaultRetryPolicy: PipelineRetryPolicy;
+};
+
+export type ExecutionQueueCounters = {
+  queued: number;
+  running: number;
+};
+
+export type ExecutionQueueState = {
+  global: ExecutionQueueCounters;
+  tools: Record<string, ExecutionQueueCounters>;
+};

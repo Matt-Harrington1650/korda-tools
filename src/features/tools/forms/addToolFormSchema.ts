@@ -1,31 +1,5 @@
 import { z } from 'zod';
-import { authTypeSchema, httpMethodSchema, toolTypeSchema } from '../../../schemas/tool';
-
-export const addToolHeaderRowSchema = z
-  .object({
-    key: z.string().trim(),
-    value: z.string().trim(),
-  })
-  .superRefine((value, context) => {
-    const hasKey = value.key.length > 0;
-    const hasValue = value.value.length > 0;
-
-    if (hasKey && !hasValue) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['value'],
-        message: 'Header value is required when key is set.',
-      });
-    }
-
-    if (!hasKey && hasValue) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['key'],
-        message: 'Header key is required when value is set.',
-      });
-    }
-  });
+import { authTypeSchema, toolStatusSchema, toolTypeSchema } from '../../../schemas/tool';
 
 export const addToolFormSchema = z
   .object({
@@ -33,52 +7,48 @@ export const addToolFormSchema = z
     description: z.string().trim().max(240),
     category: z.string().trim().min(1, 'Category is required.').max(40),
     toolType: toolTypeSchema,
-    endpointUrl: z.string().trim(),
     authType: authTypeSchema,
-    method: httpMethodSchema.nullable(),
-    headers: z.array(addToolHeaderRowSchema).max(20),
-    samplePayload: z.string().trim(),
+    customHeaderName: z.string().trim(),
+    credentialMode: z.enum(['existing', 'new']),
+    credentialRefId: z.string().trim(),
+    credentialLabel: z.string().trim(),
+    credentialSecret: z.string(),
     tags: z.string().trim(),
+    status: toolStatusSchema,
   })
   .superRefine((value, context) => {
-    const requiresEndpoint = value.toolType !== 'custom_plugin';
-    const requiresMethod = value.toolType === 'rest_api' || value.toolType === 'webhook';
+    const requiresCredential = value.authType !== 'none';
 
-    if (requiresEndpoint) {
-      if (!value.endpointUrl) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['endpointUrl'],
-          message: 'Endpoint URL is required for this tool type.',
-        });
-      } else {
-        const parsed = z.string().url().safeParse(value.endpointUrl);
-        if (!parsed.success) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['endpointUrl'],
-            message: 'Enter a valid URL.',
-          });
-        }
-      }
-    }
-
-    if (requiresMethod && value.method === null) {
+    if (value.authType === 'custom_header' && value.customHeaderName.length === 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['method'],
-        message: 'Method is required for REST API and Webhook tools.',
+        path: ['customHeaderName'],
+        message: 'Custom header name is required for custom header auth.',
       });
     }
 
-    if (value.samplePayload) {
-      try {
-        JSON.parse(value.samplePayload);
-      } catch {
+    if (requiresCredential && value.credentialMode === 'existing' && value.credentialRefId.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['credentialRefId'],
+        message: 'Select an existing credential.',
+      });
+    }
+
+    if (requiresCredential && value.credentialMode === 'new') {
+      if (value.credentialLabel.length === 0) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['samplePayload'],
-          message: 'Sample payload must be valid JSON.',
+          path: ['credentialLabel'],
+          message: 'Credential label is required.',
+        });
+      }
+
+      if (value.credentialSecret.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['credentialSecret'],
+          message: 'Credential secret is required.',
         });
       }
     }

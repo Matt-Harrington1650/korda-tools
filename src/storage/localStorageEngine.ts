@@ -1,11 +1,14 @@
 import type { ZodType } from 'zod';
 import type { StorageEngine } from './StorageEngine';
 
-type LocalStorageEngineOptions<T> = {
+export type StorageEngineOptions<T> = {
   key: string;
   schema: ZodType<T>;
   defaultValue: T;
   migrate?: (raw: unknown) => unknown;
+};
+
+type LocalStorageEngineOptions<T> = StorageEngineOptions<T> & {
   storage?: Storage;
 };
 

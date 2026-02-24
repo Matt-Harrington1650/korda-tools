@@ -31,6 +31,22 @@ export function AppShell() {
               className={({ isActive }) =>
                 `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
               }
+              to="/workflows"
+            >
+              Workflows
+            </NavLink>
+            <NavLink
+              className={({ isActive }) =>
+                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
+              }
+              to="/chat"
+            >
+              Chat
+            </NavLink>
+            <NavLink
+              className={({ isActive }) =>
+                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
+              }
               to="/settings"
             >
               Settings

@@ -57,5 +57,10 @@ export const executeHttpRequest = async (
 };
 
 export const createRequestSummary = (request: ExecutionRequest): string => {
-  return `${request.method} ${request.url}`;
+  if (!request.attachments || request.attachments.length === 0) {
+    return `${request.method} ${request.url}`;
+  }
+
+  const fileNames = request.attachments.map((attachment) => attachment.name).join(', ');
+  return `${request.method} ${request.url} (files: ${request.attachments.length} - ${fileNames})`;
 };

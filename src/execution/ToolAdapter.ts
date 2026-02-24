@@ -2,6 +2,7 @@ import type { Tool } from '../domain/tool';
 import type {
   AdapterBuildRequestInput,
   AdapterExecutionContext,
+  ExecutionEvent,
   ExecutionRequest,
   NormalizedExecutionResponse,
   RawExecutionResponse,
@@ -14,5 +15,9 @@ export interface ToolAdapter {
   validateConfig: (tool: Tool, actionType: AdapterExecutionContext['actionType']) => string[];
   buildRequest: (input: AdapterBuildRequestInput) => ExecutionRequest;
   execute: (request: ExecutionRequest, context: AdapterExecutionContext) => Promise<RawExecutionResponse>;
+  executeStream?: (
+    request: ExecutionRequest,
+    context: AdapterExecutionContext,
+  ) => AsyncGenerator<ExecutionEvent, RawExecutionResponse | void, void>;
   normalizeResponse: (raw: RawExecutionResponse, request: ExecutionRequest) => NormalizedExecutionResponse;
 }

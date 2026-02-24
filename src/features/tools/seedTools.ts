@@ -1,5 +1,5 @@
 import type { Tool } from '../../domain/tool';
-import { toolSchemaVersion } from '../../schemas/tool';
+import { toolConfigSchemaVersion, toolSchemaVersion } from '../../schemas/tool';
 
 const now = new Date().toISOString();
 
@@ -17,6 +17,13 @@ export const seedTools: Tool[] = [
     method: 'GET',
     headers: [],
     samplePayload: '',
+    configVersion: toolConfigSchemaVersion,
+    config: {
+      endpoint: 'https://api.example.com/weather/current',
+      method: 'GET',
+      headers: [],
+      samplePayload: '',
+    },
     status: 'configured',
     createdAt: now,
     updatedAt: now,
@@ -30,10 +37,17 @@ export const seedTools: Tool[] = [
     tags: ['tasks', 'sync'],
     type: 'openai_compatible',
     authType: 'api_key',
+    credentialRefId: 'OPENAI_API_KEY',
     endpoint: 'https://api.example.com/tasks/sync',
     method: 'POST',
-    headers: [{ key: 'Authorization', value: 'Bearer ${OPENAI_API_KEY}' }],
+    headers: [],
     samplePayload: '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}',
+    configVersion: toolConfigSchemaVersion,
+    config: {
+      endpoint: 'https://api.example.com/tasks/sync',
+      headers: [],
+      samplePayload: '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}',
+    },
     status: 'missing_credentials',
     createdAt: now,
     updatedAt: now,
@@ -47,10 +61,19 @@ export const seedTools: Tool[] = [
     tags: ['releases', 'notifications'],
     type: 'webhook',
     authType: 'custom_header',
+    credentialRefId: 'WEBHOOK_SECRET',
+    customHeaderName: 'X-Webhook-Secret',
     endpoint: 'https://hooks.example.com/releases',
     method: 'POST',
-    headers: [{ key: 'X-Webhook-Secret', value: '${WEBHOOK_SECRET}' }],
+    headers: [],
     samplePayload: '{"event":"release.published"}',
+    configVersion: toolConfigSchemaVersion,
+    config: {
+      endpoint: 'https://hooks.example.com/releases',
+      method: 'POST',
+      headers: [],
+      samplePayload: '{"event":"release.published"}',
+    },
     status: 'disabled',
     createdAt: now,
     updatedAt: now,

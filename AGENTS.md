@@ -21,6 +21,7 @@ Build a desktop-first AI Tool Hub MVP with:
 - All tool types use typed adapters
 - All persisted entities use versioned schemas
 - No secrets hardcoded
+- Never import @tauri-apps/* at module top-level in code paths used by web dev; use runtime-gated dynamic imports
 - Add TODO markers for extension points
 - Prefer small composable modules over large files
 

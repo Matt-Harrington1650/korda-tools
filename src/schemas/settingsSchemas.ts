@@ -15,6 +15,13 @@ export const credentialReferencesSchema = z.object({
   customHeaderRef: z.string().trim().max(120),
 });
 
+export const schedulerSettingsSchema = z.object({
+  enabled: z.boolean(),
+  notificationsEnabled: z.boolean(),
+  notifyOnSuccess: z.boolean(),
+  notifyOnFailure: z.boolean(),
+});
+
 export const settingsSchema = z.object({
   version: z.literal(settingsSchemaVersion),
   theme: themePreferenceSchema,
@@ -22,14 +29,28 @@ export const settingsSchema = z.object({
   localStoragePath: z.string().trim().max(260),
   providerDefaults: providerDefaultsSchema,
   credentialReferences: credentialReferencesSchema,
+  scheduler: schedulerSettingsSchema.default({
+    enabled: false,
+    notificationsEnabled: true,
+    notifyOnSuccess: false,
+    notifyOnFailure: true,
+  }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ProviderDefaults = z.infer<typeof providerDefaultsSchema>;
 export type CredentialReferences = z.infer<typeof credentialReferencesSchema>;
+export type SchedulerSettings = z.infer<typeof schedulerSettingsSchema>;
 
-export const settingsFormSchema = settingsSchema.omit({ version: true });
+export const settingsFormSchema = z.object({
+  theme: themePreferenceSchema,
+  defaultTimeoutMs: z.number().int().min(500, 'Timeout must be at least 500ms.').max(120_000),
+  localStoragePath: z.string().trim().max(260),
+  providerDefaults: providerDefaultsSchema,
+  credentialReferences: credentialReferencesSchema,
+  scheduler: schedulerSettingsSchema,
+});
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
 // Backward-compatible alias for existing imports.
