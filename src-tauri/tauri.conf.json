@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "AI Tool Hub",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.mattharrington.kordatools",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": [
       "nsis"
     ],
@@ -47,7 +47,6 @@
       "preload": [
         "sqlite:ai_tool_hub.db"
       ]
-    },
-    "updater": {}
+    }
   }
 }
