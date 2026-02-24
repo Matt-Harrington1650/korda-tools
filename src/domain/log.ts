@@ -1,5 +1,5 @@
-import type { z } from 'zod';
-import type { logEntrySchema, logHistorySchema } from '../schemas/logSchemas';
-
-export type LogEntry = z.infer<typeof logEntrySchema>;
-export type LogHistory = z.infer<typeof logHistorySchema>;
+export type {
+  ToolRunLog,
+  ToolRunLogHistory,
+  ToolRunState,
+} from '../schemas/logSchemas';

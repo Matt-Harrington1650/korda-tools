@@ -3,7 +3,7 @@ import { restToolAdapter } from './RestToolAdapter';
 import type { ToolAdapter } from './ToolAdapter';
 
 const toolAdapters: Partial<Record<ToolType, ToolAdapter>> = {
-  rest: restToolAdapter,
+  rest_api: restToolAdapter,
 };
 
 // TODO(extension): wire adapter registration to plugin/provider manifests.

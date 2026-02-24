@@ -1,7 +1,7 @@
 import type { ToolAdapter } from './ToolAdapter';
 
 export const restToolAdapter: ToolAdapter = {
-  type: 'rest',
+  type: 'rest_api',
   testConnection: async (tool) => {
     const startTime = performance.now();
     await new Promise((resolve) => {

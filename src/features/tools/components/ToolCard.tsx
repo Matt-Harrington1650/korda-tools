@@ -8,9 +8,9 @@ type ToolCardProps = {
 };
 
 const STATUS_STYLES: Record<Tool['status'], string> = {
-  healthy: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
-  degraded: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
-  offline: 'bg-rose-500/20 text-rose-300 border border-rose-500/40',
+  configured: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+  missing_credentials: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
+  disabled: 'bg-rose-500/20 text-rose-300 border border-rose-500/40',
 };
 
 export function ToolCard({ tool, compact = false }: ToolCardProps) {

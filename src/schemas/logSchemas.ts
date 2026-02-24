@@ -1,18 +1,36 @@
 import { z } from 'zod';
 
-export const logSchemaVersion = 1 as const;
-export const logLevelSchema = z.enum(['info', 'warning', 'error']);
+export const toolRunLogSchemaVersion = 1 as const;
 
-export const logEntrySchema = z.object({
+export const toolRunStateSchema = z.enum([
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+]);
+
+export const toolRunLogSchema = z.object({
   id: z.string().min(1),
-  version: z.literal(logSchemaVersion),
-  level: logLevelSchema,
-  message: z.string().trim().min(1),
-  createdAt: z.string().datetime(),
-  context: z.record(z.string(), z.string()).optional(),
+  version: z.literal(toolRunLogSchemaVersion),
+  toolId: z.string().min(1),
+  state: toolRunStateSchema,
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime().nullable(),
+  requestPayload: z.string().default(''),
+  responsePayload: z.string().default(''),
+  errorMessage: z.string().default(''),
 });
 
-export const logHistorySchema = z.object({
-  version: z.literal(logSchemaVersion),
-  entries: z.array(logEntrySchema),
+export const toolRunLogHistorySchema = z.object({
+  version: z.literal(toolRunLogSchemaVersion),
+  entries: z.array(toolRunLogSchema),
 });
+
+export type ToolRunState = z.infer<typeof toolRunStateSchema>;
+export type ToolRunLog = z.infer<typeof toolRunLogSchema>;
+export type ToolRunLogHistory = z.infer<typeof toolRunLogHistorySchema>;
+
+// Backward-compatible aliases for existing imports.
+export const logSchemaVersion = toolRunLogSchemaVersion;
+export const logEntrySchema = toolRunLogSchema;
+export const logHistorySchema = toolRunLogHistorySchema;
