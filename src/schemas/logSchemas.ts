@@ -2,23 +2,31 @@ import { z } from 'zod';
 
 export const toolRunLogSchemaVersion = 1 as const;
 
-export const toolRunStateSchema = z.enum([
-  'queued',
-  'running',
-  'succeeded',
-  'failed',
-]);
+export const toolRunActionTypeSchema = z.enum(['test', 'run']);
+
+export const toolRunRequestSummarySchema = z.object({
+  method: z.string(),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()),
+  payloadPreview: z.string(),
+});
+
+export const toolRunResponseSummarySchema = z.object({
+  statusCode: z.number().nullable(),
+  preview: z.string(),
+  durationMs: z.number().int().nonnegative(),
+});
 
 export const toolRunLogSchema = z.object({
   id: z.string().min(1),
   version: z.literal(toolRunLogSchemaVersion),
   toolId: z.string().min(1),
-  state: toolRunStateSchema,
-  startedAt: z.string().datetime(),
-  finishedAt: z.string().datetime().nullable(),
-  requestPayload: z.string().default(''),
-  responsePayload: z.string().default(''),
-  errorMessage: z.string().default(''),
+  timestamp: z.string().datetime(),
+  actionType: toolRunActionTypeSchema,
+  requestSummary: toolRunRequestSummarySchema,
+  responseSummary: toolRunResponseSummarySchema,
+  success: z.boolean(),
+  errorDetails: z.string(),
 });
 
 export const toolRunLogHistorySchema = z.object({
@@ -26,7 +34,9 @@ export const toolRunLogHistorySchema = z.object({
   entries: z.array(toolRunLogSchema),
 });
 
-export type ToolRunState = z.infer<typeof toolRunStateSchema>;
+export type ToolRunActionType = z.infer<typeof toolRunActionTypeSchema>;
+export type ToolRunRequestSummary = z.infer<typeof toolRunRequestSummarySchema>;
+export type ToolRunResponseSummary = z.infer<typeof toolRunResponseSummarySchema>;
 export type ToolRunLog = z.infer<typeof toolRunLogSchema>;
 export type ToolRunLogHistory = z.infer<typeof toolRunLogHistorySchema>;
 

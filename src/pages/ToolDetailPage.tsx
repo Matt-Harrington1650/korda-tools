@@ -86,7 +86,7 @@ export function ToolDetailPage() {
 
   const selectedToolType = watch('toolType');
   const needsMethod = selectedToolType === 'rest_api' || selectedToolType === 'webhook';
-  const { executeAction, isExecuting, activeAction, lastResult, localLogs } = useToolExecution(tool);
+  const { executeAction, isExecuting, activeAction, lastResult, logs } = useToolExecution(tool);
 
   const onSubmit = (values: ToolDetailFormValues): void => {
     if (!tool) {
@@ -359,11 +359,11 @@ export function ToolDetailPage() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-base font-semibold text-slate-900">Request / Response Logs</h3>
-        {localLogs.length === 0 ? (
+        {logs.length === 0 ? (
           <p className="mt-1 text-sm text-slate-600">No runs recorded yet.</p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {localLogs.map((log) => (
+            {logs.map((log) => (
               <li className="rounded-md border border-slate-200 p-3" key={log.id}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium text-slate-900">
@@ -371,9 +371,16 @@ export function ToolDetailPage() {
                   </p>
                   <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()}</p>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">{log.requestSummary}</p>
-                <p className="mt-1 text-xs text-slate-600">{log.responseSummary}</p>
-                {log.errorDetails ? <pre className="mt-2 overflow-auto rounded bg-slate-50 p-2 text-xs text-rose-700">{log.errorDetails}</pre> : null}
+                <p className="mt-1 text-xs text-slate-600">
+                  {log.requestSummary.method} {log.requestSummary.url}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Status: {log.responseSummary.statusCode ?? 'n/a'} ({log.responseSummary.durationMs} ms)
+                </p>
+                <pre className="mt-2 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-700">{log.responseSummary.preview}</pre>
+                {log.errorDetails ? (
+                  <pre className="mt-2 overflow-auto rounded bg-slate-50 p-2 text-xs text-rose-700">{log.errorDetails}</pre>
+                ) : null}
               </li>
             ))}
           </ul>
