@@ -27,6 +27,8 @@ export const toolSchema = z.object({
   version: z.literal(toolSchemaVersion),
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().max(240),
+  category: z.string().trim().min(1).max(40),
+  tags: z.array(z.string().trim().min(1).max(30)).max(20),
   type: toolTypeSchema,
   authType: authTypeSchema,
   endpoint: z.string().trim().url(),
@@ -38,6 +40,8 @@ export const toolSchema = z.object({
 export const createToolInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().max(240),
+  category: z.string().trim().min(1).max(40).default('general'),
+  tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   type: toolTypeSchema,
   authType: authTypeSchema,
   endpoint: z.string().trim().url(),

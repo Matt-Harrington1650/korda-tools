@@ -25,25 +25,53 @@ const persistTools = (tools: Tool[]): void => {
   });
 };
 
+const validatePersistedTools = (value: unknown): Tool[] | null => {
+  const parsed = toolRegistrySchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data.tools;
+};
+
 const resolveInitialTools = (): Tool[] => {
   const persisted = persistence.load();
-  if (persisted.tools.length) {
-    return persisted.tools;
+  const validatedTools = validatePersistedTools(persisted);
+
+  if (validatedTools && validatedTools.length > 0) {
+    return validatedTools;
   }
 
   persistTools(seedTools);
   return seedTools;
 };
 
-export type DashboardLayout = 'grid' | 'list';
+export type ViewMode = 'grid' | 'list';
+export type DashboardLayout = ViewMode;
+
+export type ToolRegistryFilters = {
+  search: string;
+  tags: string[];
+  category: string | null;
+  viewMode: ViewMode;
+};
 
 type ToolRegistryState = {
   tools: Tool[];
-  dashboardLayout: DashboardLayout;
-  setDashboardLayout: (layout: DashboardLayout) => void;
-  createTool: (input: CreateToolInput) => Tool;
+  selectedToolId?: string;
+  filters: ToolRegistryFilters;
+  loadTools: () => void;
+  addTool: (input: CreateToolInput) => Tool;
   updateTool: (id: string, input: UpdateToolInput) => Tool | null;
   deleteTool: (id: string) => void;
+  setSearch: (search: string) => void;
+  setCategory: (category: string | null) => void;
+  toggleTag: (tag: string) => void;
+  setViewMode: (viewMode: ViewMode) => void;
+  setSelectedToolId: (toolId?: string) => void;
+  // Backward-compatible aliases
+  setDashboardLayout: (layout: DashboardLayout) => void;
+  createTool: (input: CreateToolInput) => Tool;
   getToolById: (id: string) => Tool | undefined;
   resetToSeedData: () => void;
 };
@@ -52,11 +80,26 @@ const initialTools = resolveInitialTools();
 
 export const useToolRegistryStore = create<ToolRegistryState>((set, get) => ({
   tools: initialTools,
-  dashboardLayout: 'grid',
-  setDashboardLayout: (layout) => {
-    set({ dashboardLayout: layout });
+  selectedToolId: undefined,
+  filters: {
+    search: '',
+    tags: [],
+    category: null,
+    viewMode: 'grid',
   },
-  createTool: (input) => {
+  loadTools: () => {
+    const persisted = persistence.load();
+    const validatedTools = validatePersistedTools(persisted);
+
+    if (!validatedTools || validatedTools.length === 0) {
+      persistTools(seedTools);
+      set({ tools: seedTools });
+      return;
+    }
+
+    set({ tools: validatedTools });
+  },
+  addTool: (input) => {
     const parsedInput = createToolInputSchema.parse(input);
     const timestamp = new Date().toISOString();
 
@@ -101,7 +144,54 @@ export const useToolRegistryStore = create<ToolRegistryState>((set, get) => ({
   deleteTool: (id) => {
     const nextTools = get().tools.filter((tool) => tool.id !== id);
     persistTools(nextTools);
-    set({ tools: nextTools });
+    set((state) => ({
+      tools: nextTools,
+      selectedToolId: state.selectedToolId === id ? undefined : state.selectedToolId,
+    }));
+  },
+  setSearch: (search) => {
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        search,
+      },
+    }));
+  },
+  setCategory: (category) => {
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        category,
+      },
+    }));
+  },
+  toggleTag: (tag) => {
+    set((state) => {
+      const tagExists = state.filters.tags.includes(tag);
+      return {
+        filters: {
+          ...state.filters,
+          tags: tagExists ? state.filters.tags.filter((item) => item !== tag) : [...state.filters.tags, tag],
+        },
+      };
+    });
+  },
+  setViewMode: (viewMode) => {
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        viewMode,
+      },
+    }));
+  },
+  setSelectedToolId: (toolId) => {
+    set({ selectedToolId: toolId });
+  },
+  setDashboardLayout: (layout) => {
+    get().setViewMode(layout);
+  },
+  createTool: (input) => {
+    return get().addTool(input);
   },
   getToolById: (id) => {
     return get().tools.find((tool) => tool.id === id);
