@@ -139,11 +139,8 @@ pub fn export_tool_version_zip(
                 &context.version.tool_id,
                 &context.version.id,
             )?;
-            let expected_rel_path = build_stored_rel_path(
-                &context.version.tool_id,
-                &context.version.id,
-                &sanitized,
-            )?;
+            let expected_rel_path =
+                build_stored_rel_path(&context.version.tool_id, &context.version.id, &sanitized)?;
             if file.stored_rel_path != expected_rel_path {
                 return Err(ToolsError::Zip(format!(
                     "Stored path mismatch for {}.",
@@ -334,14 +331,19 @@ pub fn import_tool_zip(zip_path: &str) -> ToolsResult<ParsedImportArchive> {
     result
 }
 
-pub fn import_tool_zip_payload(file_name: &str, data_base64: &str) -> ToolsResult<ParsedImportArchive> {
+pub fn import_tool_zip_payload(
+    file_name: &str,
+    data_base64: &str,
+) -> ToolsResult<ParsedImportArchive> {
     debug!(
         "custom-tools: zip payload import start file_name={}",
         file_name.trim()
     );
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.trim())
-        .map_err(|error| ToolsError::Validation(format!("Invalid zip payload encoding: {error}")))?;
+        .map_err(|error| {
+            ToolsError::Validation(format!("Invalid zip payload encoding: {error}"))
+        })?;
 
     let staging = create_temp_dir("tool-import-payload")?;
     let suggested_name = file_name.trim();
@@ -524,9 +526,6 @@ fn normalize_optional_text(value: Option<String>, max_len: usize) -> ToolsResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use zip::write::SimpleFileOptions;
-    use zip::ZipWriter;
 
     #[test]
     fn generates_manifest_from_export_context() {
@@ -670,36 +669,33 @@ mod tests {
         for malicious_path in malicious_paths {
             let root = create_temp_dir("zip-slip").unwrap();
             let zip_path = root.join("payload.zip");
+            let manifest_json = serde_json::to_string_pretty(&ToolExportManifest {
+                tool: ManifestTool {
+                    name: "CAD Toolset".to_string(),
+                    slug: "cad-toolset".to_string(),
+                    description: "CAD helpers".to_string(),
+                    category: "cad".to_string(),
+                    tags: vec!["autocad".to_string()],
+                },
+                version: ManifestVersion {
+                    version: "1.0.0".to_string(),
+                    changelog_md: None,
+                },
+                files: vec![ManifestFile {
+                    original_name: "install.scr".to_string(),
+                    sha256: sha256_hex(b"abc"),
+                    size_bytes: 3,
+                    relative_path: "files/install.scr".to_string(),
+                }],
+            })
+            .unwrap();
             write_zip_with_entries(
                 &zip_path,
-                &[
-                    (
-                        "manifest.json",
-                        serde_json::to_string_pretty(&ToolExportManifest {
-                            tool: ManifestTool {
-                                name: "CAD Toolset".to_string(),
-                                slug: "cad-toolset".to_string(),
-                                description: "CAD helpers".to_string(),
-                                category: "cad".to_string(),
-                                tags: vec!["autocad".to_string()],
-                            },
-                            version: ManifestVersion {
-                                version: "1.0.0".to_string(),
-                                changelog_md: None,
-                            },
-                            files: vec![ManifestFile {
-                                original_name: "install.scr".to_string(),
-                                sha256: sha256_hex(b"abc"),
-                                size_bytes: 3,
-                                relative_path: "files/install.scr".to_string(),
-                            }],
-                        })
-                        .unwrap()
-                        .as_bytes(),
-                    ),
-                    ("instructions.md", b"# install"),
-                    ("files/install.scr", b"abc"),
-                    (malicious_path, b"boom"),
+                vec![
+                    ("manifest.json".to_string(), manifest_json.into_bytes()),
+                    ("instructions.md".to_string(), b"# install".to_vec()),
+                    ("files/install.scr".to_string(), b"abc".to_vec()),
+                    (malicious_path.to_string(), b"boom".to_vec()),
                 ],
             );
 
@@ -707,23 +703,33 @@ mod tests {
             assert!(
                 error.user_message().contains("Unsafe zip entry path")
                     || error.user_message().contains("Unexpected file in archive")
-                    || error.user_message().contains("Failed to execute archive command")
+                    || error
+                        .user_message()
+                        .contains("Failed to execute archive command")
             );
 
             let _ = std::fs::remove_dir_all(root);
         }
     }
 
-    fn write_zip_with_entries(path: &Path, entries: &[(&str, &[u8])]) {
-        let file = fs::File::create(path).unwrap();
-        let mut writer = ZipWriter::new(file);
-        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    fn write_zip_with_entries(path: &Path, entries: Vec<(String, Vec<u8>)>) {
+        let zip_path = ps_quote(path.to_string_lossy().as_ref());
+        let entry_objects = entries
+            .into_iter()
+            .map(|(entry_name, content)| {
+                format!(
+                    "@{{ Name='{}'; Data='{}' }}",
+                    entry_name.replace('\'', "''"),
+                    base64::engine::general_purpose::STANDARD.encode(content)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
 
-        for (entry_name, content) in entries {
-            writer.start_file(entry_name, options).unwrap();
-            writer.write_all(content).unwrap();
-        }
+        let script = format!(
+            "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression; Add-Type -AssemblyName System.IO.Compression.FileSystem; $zipPath={zip_path}; if (Test-Path -LiteralPath $zipPath) {{ Remove-Item -LiteralPath $zipPath -Force }}; $entries=@({entry_objects}); $archive=[System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create); try {{ foreach ($entry in $entries) {{ $zipEntry=$archive.CreateEntry($entry.Name); $stream=$zipEntry.Open(); try {{ $bytes=[System.Convert]::FromBase64String($entry.Data); $stream.Write($bytes, 0, $bytes.Length) }} finally {{ $stream.Dispose() }} }} }} finally {{ $archive.Dispose() }}"
+        );
 
-        writer.finish().unwrap();
+        run_powershell(&script).unwrap();
     }
 }

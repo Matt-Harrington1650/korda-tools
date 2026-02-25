@@ -213,7 +213,10 @@ pub fn assert_safe_archive_path(path: &str) -> ToolsResult<()> {
         return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
     }
 
-    if trimmed.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..") {
+    if trimmed
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
         return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
     }
 
@@ -391,7 +394,11 @@ fn validate_storage_segment(label: &str, value: &str) -> ToolsResult<String> {
         return Err(ToolsError::Validation(format!("{label} is required.")));
     }
 
-    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") || trimmed.contains(':') {
+    if trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.contains(':')
+    {
         return Err(ToolsError::Validation(format!(
             "{label} contains unsafe path characters."
         )));
@@ -515,11 +522,14 @@ mod tests {
 
     #[test]
     fn normalizes_and_validates_stored_rel_paths() {
-        let normalized = normalize_stored_rel_path("tools/tool_1/version_1/files/install.scr").unwrap();
+        let normalized =
+            normalize_stored_rel_path("tools/tool_1/version_1/files/install.scr").unwrap();
         assert_eq!(normalized, "tools/tool_1/version_1/files/install.scr");
 
         assert!(normalize_stored_rel_path("tools/tool_1/version_1/files/../evil.scr").is_err());
-        assert!(normalize_stored_rel_path("tools/tool_1/version_1/files/not sanitized.SCR").is_err());
+        assert!(
+            normalize_stored_rel_path("tools/tool_1/version_1/files/not sanitized.SCR").is_err()
+        );
         assert!(normalize_stored_rel_path("secrets/tool_1/version_1/files/install.scr").is_err());
     }
 
@@ -543,8 +553,12 @@ mod tests {
             },
         ];
 
-        let staged = stage_inbound_files("tool_1", "version_1", files, &FileLimits::default()).unwrap();
-        let names = staged.into_iter().map(|file| file.original_name).collect::<Vec<_>>();
+        let staged =
+            stage_inbound_files("tool_1", "version_1", files, &FileLimits::default()).unwrap();
+        let names = staged
+            .into_iter()
+            .map(|file| file.original_name)
+            .collect::<Vec<_>>();
         assert_eq!(
             names,
             vec![
@@ -573,9 +587,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(per_file_err
-            .user_message()
-            .contains("exceeds max size"));
+        assert!(per_file_err.user_message().contains("exceeds max size"));
 
         let total_err = stage_inbound_files(
             "tool_1",
@@ -590,5 +602,22 @@ mod tests {
         assert!(total_err
             .user_message()
             .contains("Combined file size exceeds"));
+    }
+
+    #[test]
+    fn stored_path_scope_checks_match_expected_version() {
+        assert!(assert_stored_path_matches_version(
+            "tools/tool_1/version_1/files/install.scr",
+            "tool_1",
+            "version_1"
+        )
+        .is_ok());
+
+        assert!(assert_stored_path_matches_version(
+            "tools/tool_1/version_2/files/install.scr",
+            "tool_1",
+            "version_1"
+        )
+        .is_err());
     }
 }

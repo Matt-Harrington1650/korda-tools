@@ -139,7 +139,9 @@ pub async fn tool_create(
             &version_id,
             request.metadata,
             VersionInsertInput {
-                version: request.version.unwrap_or_else(|| DEFAULT_INITIAL_VERSION.to_string()),
+                version: request
+                    .version
+                    .unwrap_or_else(|| DEFAULT_INITIAL_VERSION.to_string()),
                 changelog_md: request.changelog_md,
                 instructions_md: request.instructions_md,
             },
@@ -217,10 +219,7 @@ pub async fn tool_delete(app: AppHandle, tool_id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub async fn tool_delete_version(
-    app: AppHandle,
-    tool_version_id: String,
-) -> Result<(), String> {
+pub async fn tool_delete_version(app: AppHandle, tool_version_id: String) -> Result<(), String> {
     run(async {
         let pool = db::open_pool(&app).await?;
         let trimmed_version_id = tool_version_id.trim();
@@ -279,7 +278,8 @@ pub async fn tool_export_zip_payload(
         let pool = db::open_pool(&app).await?;
         let context = db::get_export_context(&pool, tool_version_id.trim()).await?;
 
-        let temp_zip_path = std::env::temp_dir().join(format!("tool-export-{}.zip", Uuid::new_v4()));
+        let temp_zip_path =
+            std::env::temp_dir().join(format!("tool-export-{}.zip", Uuid::new_v4()));
         zip::export_tool_version_zip(&app, &context, temp_zip_path.to_string_lossy().as_ref())?;
 
         let bytes = fs::read(&temp_zip_path)?;
@@ -309,11 +309,10 @@ pub async fn tool_preview_import_zip_payload(
             payload.file_name.trim()
         );
         let parsed = zip::import_tool_zip_payload(&payload.file_name, &payload.data_base64)?;
-        let slug = parsed
-            .metadata
-            .slug
-            .clone()
-            .ok_or_else(|| ToolsError::Validation("Manifest tool.slug is required.".to_string()))?;
+        let slug =
+            parsed.metadata.slug.clone().ok_or_else(|| {
+                ToolsError::Validation("Manifest tool.slug is required.".to_string())
+            })?;
 
         let mut total_size_bytes = 0u64;
         let files = parsed
