@@ -1,6 +1,7 @@
 use std::fs;
 
 use base64::Engine;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -11,8 +12,8 @@ use super::db::{
 };
 use super::error::{ToolsError, ToolsResult};
 use super::storage::{
-    self, delete_tool_folder, remove_written_files, sha256_hex, stage_inbound_files,
-    write_staged_files, FileLimits, InboundToolFile,
+    self, delete_tool_folder, delete_version_folder, remove_written_files, sha256_hex,
+    stage_inbound_files, write_staged_files, FileLimits, InboundToolFile,
 };
 use super::zip;
 
@@ -209,7 +210,32 @@ pub async fn tool_delete(app: AppHandle, tool_id: String) -> Result<(), String> 
         let pool = db::open_pool(&app).await?;
         let trimmed_tool_id = tool_id.trim();
         db::delete_tool(&pool, trimmed_tool_id).await?;
+        debug!("custom-tools: deleted tool {}", trimmed_tool_id);
         delete_tool_folder(&app, trimmed_tool_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn tool_delete_version(
+    app: AppHandle,
+    tool_version_id: String,
+) -> Result<(), String> {
+    run(async {
+        let pool = db::open_pool(&app).await?;
+        let trimmed_version_id = tool_version_id.trim();
+        if trimmed_version_id.is_empty() {
+            return Err(ToolsError::Validation(
+                "tool_version_id is required.".to_string(),
+            ));
+        }
+
+        let tool_id = db::delete_tool_version(&pool, trimmed_version_id).await?;
+        debug!(
+            "custom-tools: deleted version {} for tool {}",
+            trimmed_version_id, tool_id
+        );
+        delete_version_folder(&app, &tool_id, trimmed_version_id)
     })
     .await
 }
@@ -221,9 +247,21 @@ pub async fn tool_export_zip(
     destination_path: String,
 ) -> Result<(), String> {
     run(async {
+        debug!(
+            "custom-tools: exporting version {} to {}",
+            tool_version_id.trim(),
+            destination_path.trim()
+        );
         let pool = db::open_pool(&app).await?;
         let context = db::get_export_context(&pool, tool_version_id.trim()).await?;
-        zip::export_tool_version_zip(&app, &context, destination_path.trim())
+        let result = zip::export_tool_version_zip(&app, &context, destination_path.trim());
+        if result.is_ok() {
+            debug!(
+                "custom-tools: exported version {} successfully",
+                tool_version_id.trim()
+            );
+        }
+        result
     })
     .await
 }
@@ -234,6 +272,10 @@ pub async fn tool_export_zip_payload(
     tool_version_id: String,
 ) -> Result<ExportZipPayload, String> {
     run(async {
+        debug!(
+            "custom-tools: exporting payload for version {}",
+            tool_version_id.trim()
+        );
         let pool = db::open_pool(&app).await?;
         let context = db::get_export_context(&pool, tool_version_id.trim()).await?;
 
@@ -262,6 +304,10 @@ pub async fn tool_preview_import_zip_payload(
     payload: ZipPayloadRequest,
 ) -> Result<ToolImportPreview, String> {
     run(async {
+        debug!(
+            "custom-tools: preview import payload {}",
+            payload.file_name.trim()
+        );
         let parsed = zip::import_tool_zip_payload(&payload.file_name, &payload.data_base64)?;
         let slug = parsed
             .metadata
@@ -302,8 +348,17 @@ pub async fn tool_import_zip_payload(
     payload: ZipPayloadRequest,
 ) -> Result<ToolImportResult, String> {
     run(async {
+        debug!(
+            "custom-tools: importing payload {}",
+            payload.file_name.trim()
+        );
         let parsed = zip::import_tool_zip_payload(&payload.file_name, &payload.data_base64)?;
-        import_parsed_archive(&app, parsed).await
+        let result = import_parsed_archive(&app, parsed).await?;
+        debug!(
+            "custom-tools: imported payload into tool {}, version {}, created_tool={}",
+            result.tool_id, result.version_id, result.created_tool
+        );
+        Ok(result)
     })
     .await
 }
@@ -311,8 +366,14 @@ pub async fn tool_import_zip_payload(
 #[tauri::command]
 pub async fn tool_import_zip(app: AppHandle, zip_path: String) -> Result<ToolImportResult, String> {
     run(async {
+        debug!("custom-tools: importing zip {}", zip_path.trim());
         let parsed = zip::import_tool_zip(zip_path.trim())?;
-        import_parsed_archive(&app, parsed).await
+        let result = import_parsed_archive(&app, parsed).await?;
+        debug!(
+            "custom-tools: imported zip into tool {}, version {}, created_tool={}",
+            result.tool_id, result.version_id, result.created_tool
+        );
+        Ok(result)
     })
     .await
 }

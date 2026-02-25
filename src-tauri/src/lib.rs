@@ -98,6 +98,7 @@ pub fn run() {
             tools::commands::tool_create,
             tools::commands::tool_add_version,
             tools::commands::tool_delete,
+            tools::commands::tool_delete_version,
             tools::commands::tool_export_zip,
             tools::commands::tool_export_zip_payload,
             tools::commands::tool_preview_import_zip_payload,
@@ -113,7 +114,7 @@ pub fn run() {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
+                        .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
             }

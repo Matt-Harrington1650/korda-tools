@@ -11,6 +11,8 @@ use super::error::{ToolsError, ToolsResult};
 pub const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 50 * 1024 * 1024;
 pub const DEFAULT_MAX_VERSION_SIZE_BYTES: u64 = 200 * 1024 * 1024;
 const MAX_SANITIZED_FILENAME_LEN: usize = 120;
+const STORAGE_ROOT_SEGMENT: &str = "tools";
+const STORAGE_FILES_SEGMENT: &str = "files";
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "lsp", "vlx", "fas", "scr", "dwg", "dxf", "cuix", "zip", "pdf", "txt", "md", "json",
@@ -55,6 +57,9 @@ pub fn stage_inbound_files(
     files: Vec<InboundToolFile>,
     limits: &FileLimits,
 ) -> ToolsResult<Vec<StagedToolFile>> {
+    let normalized_tool_id = validate_storage_segment("tool_id", tool_id)?;
+    let normalized_version_id = validate_storage_segment("version_id", version_id)?;
+
     if files.is_empty() {
         return Err(ToolsError::Validation(
             "At least one file is required.".to_string(),
@@ -96,7 +101,8 @@ pub fn stage_inbound_files(
         }
 
         let sha256 = sha256_hex(&bytes);
-        let stored_rel_path = format!("tools/{tool_id}/{version_id}/files/{sanitized}");
+        let stored_rel_path =
+            build_stored_rel_path(&normalized_tool_id, &normalized_version_id, &sanitized)?;
 
         staged.push(StagedToolFile {
             original_name: sanitized,
@@ -190,24 +196,32 @@ pub fn sanitize_filename(original_name: &str) -> ToolsResult<String> {
 }
 
 pub fn assert_safe_archive_path(path: &str) -> ToolsResult<()> {
-    if path.trim().is_empty() {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
         return Err(ToolsError::Zip("Zip entry has an empty path.".to_string()));
     }
 
-    if path.starts_with('/') || path.starts_with('\\') || path.contains(':') || path.contains('\\')
-    {
-        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {path}")));
+    if trimmed.starts_with('/') || trimmed.starts_with('\\') || trimmed.contains(':') {
+        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
     }
 
-    for component in Path::new(path).components() {
+    if trimmed.contains('\\') {
+        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
+    }
+
+    if trimmed.contains('\0') {
+        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
+    }
+
+    if trimmed.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..") {
+        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}")));
+    }
+
+    for component in Path::new(trimmed).components() {
         match component {
-            Component::Normal(_) | Component::CurDir => {}
-            _ => return Err(ToolsError::Zip(format!("Unsafe zip entry path: {path}"))),
+            Component::Normal(_) => {}
+            _ => return Err(ToolsError::Zip(format!("Unsafe zip entry path: {trimmed}"))),
         }
-    }
-
-    if path.split('/').any(|segment| segment == "..") {
-        return Err(ToolsError::Zip(format!("Unsafe zip entry path: {path}")));
     }
 
     Ok(())
@@ -251,27 +265,112 @@ pub fn remove_written_files(paths: &[PathBuf]) {
 }
 
 pub fn delete_tool_folder(app: &AppHandle, tool_id: &str) -> ToolsResult<()> {
-    let folder = tools_root_dir(app)?.join(tool_id);
+    let safe_tool_id = validate_storage_segment("tool_id", tool_id)?;
+    let folder = tools_root_dir(app)?.join(safe_tool_id);
     if folder.exists() {
         fs::remove_dir_all(folder)?;
     }
     Ok(())
 }
 
-pub fn resolve_stored_path(app: &AppHandle, stored_rel_path: &str) -> ToolsResult<PathBuf> {
+pub fn delete_version_folder(app: &AppHandle, tool_id: &str, version_id: &str) -> ToolsResult<()> {
+    let safe_tool_id = validate_storage_segment("tool_id", tool_id)?;
+    let safe_version_id = validate_storage_segment("version_id", version_id)?;
+    let tool_folder = tools_root_dir(app)?.join(&safe_tool_id);
+    let version_folder = tool_folder.join(&safe_version_id);
+
+    if version_folder.exists() {
+        fs::remove_dir_all(version_folder)?;
+    }
+
+    if tool_folder.exists() && fs::read_dir(&tool_folder)?.next().is_none() {
+        fs::remove_dir(tool_folder)?;
+    }
+
+    Ok(())
+}
+
+pub fn build_stored_rel_path(
+    tool_id: &str,
+    version_id: &str,
+    file_name: &str,
+) -> ToolsResult<String> {
+    let safe_tool_id = validate_storage_segment("tool_id", tool_id)?;
+    let safe_version_id = validate_storage_segment("version_id", version_id)?;
+    let safe_file_name = sanitize_filename(file_name)?;
+
+    Ok(format!(
+        "{}/{}/{}/{}/{}",
+        STORAGE_ROOT_SEGMENT, safe_tool_id, safe_version_id, STORAGE_FILES_SEGMENT, safe_file_name
+    ))
+}
+
+pub fn assert_stored_path_matches_version(
+    stored_rel_path: &str,
+    tool_id: &str,
+    version_id: &str,
+) -> ToolsResult<()> {
+    let normalized = normalize_stored_rel_path(stored_rel_path)?;
+    let safe_tool_id = validate_storage_segment("tool_id", tool_id)?;
+    let safe_version_id = validate_storage_segment("version_id", version_id)?;
+    let expected_prefix = format!(
+        "{}/{}/{}/{}",
+        STORAGE_ROOT_SEGMENT, safe_tool_id, safe_version_id, STORAGE_FILES_SEGMENT
+    );
+
+    if !normalized.starts_with(&expected_prefix) {
+        return Err(ToolsError::Io(format!(
+            "Stored path is outside requested version scope: {}",
+            normalized
+        )));
+    }
+
+    Ok(())
+}
+
+pub fn normalize_stored_rel_path(stored_rel_path: &str) -> ToolsResult<String> {
     assert_safe_archive_path(stored_rel_path)?;
+    let segments = stored_rel_path.trim().split('/').collect::<Vec<_>>();
+
+    if segments.len() != 5
+        || segments[0] != STORAGE_ROOT_SEGMENT
+        || segments[3] != STORAGE_FILES_SEGMENT
+    {
+        return Err(ToolsError::Io(format!(
+            "Invalid stored path structure: {}",
+            stored_rel_path.trim()
+        )));
+    }
+
+    let safe_tool_id = validate_storage_segment("tool_id", segments[1])?;
+    let safe_version_id = validate_storage_segment("version_id", segments[2])?;
+    let safe_file_name = sanitize_filename(segments[4])?;
+    if safe_file_name != segments[4] {
+        return Err(ToolsError::Io(format!(
+            "Stored file name must already be sanitized: {}",
+            segments[4]
+        )));
+    }
+
+    Ok(format!(
+        "{}/{}/{}/{}/{}",
+        STORAGE_ROOT_SEGMENT, safe_tool_id, safe_version_id, STORAGE_FILES_SEGMENT, safe_file_name
+    ))
+}
+
+pub fn resolve_stored_path(app: &AppHandle, stored_rel_path: &str) -> ToolsResult<PathBuf> {
+    let normalized_rel_path = normalize_stored_rel_path(stored_rel_path)?;
 
     let mut absolute = app.path().app_data_dir().map_err(|error| {
         ToolsError::Io(format!("Failed to resolve app data directory: {error}"))
     })?;
 
-    for component in Path::new(stored_rel_path).components() {
+    for component in Path::new(&normalized_rel_path).components() {
         match component {
             Component::Normal(value) => absolute.push(value),
-            Component::CurDir => {}
             _ => {
                 return Err(ToolsError::Io(format!(
-                    "Unsafe stored path: {stored_rel_path}"
+                    "Unsafe stored path: {normalized_rel_path}"
                 )))
             }
         }
@@ -286,12 +385,36 @@ pub fn read_stored_file_bytes(app: &AppHandle, stored_rel_path: &str) -> ToolsRe
     Ok(bytes)
 }
 
+fn validate_storage_segment(label: &str, value: &str) -> ToolsResult<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ToolsError::Validation(format!("{label} is required.")));
+    }
+
+    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") || trimmed.contains(':') {
+        return Err(ToolsError::Validation(format!(
+            "{label} contains unsafe path characters."
+        )));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(ToolsError::Validation(format!(
+            "{label} contains unsupported characters."
+        )));
+    }
+
+    Ok(trimmed.to_string())
+}
+
 fn unique_sanitized_filename(
     original_name: &str,
     existing: &mut HashSet<String>,
 ) -> ToolsResult<String> {
     let sanitized = sanitize_filename(original_name)?;
-    if existing.insert(sanitized.clone()) {
+    if existing.insert(sanitized.to_ascii_lowercase()) {
         return Ok(sanitized);
     }
 
@@ -320,7 +443,7 @@ fn unique_sanitized_filename(
             candidate
         };
 
-        if existing.insert(trimmed_candidate.clone()) {
+        if existing.insert(trimmed_candidate.to_ascii_lowercase()) {
             return Ok(trimmed_candidate);
         }
 
@@ -382,8 +505,90 @@ mod tests {
     #[test]
     fn rejects_traversal_and_absolute_paths() {
         assert!(assert_safe_archive_path("../file.txt").is_err());
+        assert!(assert_safe_archive_path("..\\file.txt").is_err());
+        assert!(assert_safe_archive_path("C:\\evil.txt").is_err());
         assert!(assert_safe_archive_path("C:/evil.txt").is_err());
-        assert!(assert_safe_archive_path("/root/file.txt").is_err());
+        assert!(assert_safe_archive_path("/absolute/file.txt").is_err());
+        assert!(assert_safe_archive_path("\\\\server\\share\\file.txt").is_err());
         assert!(assert_safe_archive_path("files/good/file.txt").is_ok());
+    }
+
+    #[test]
+    fn normalizes_and_validates_stored_rel_paths() {
+        let normalized = normalize_stored_rel_path("tools/tool_1/version_1/files/install.scr").unwrap();
+        assert_eq!(normalized, "tools/tool_1/version_1/files/install.scr");
+
+        assert!(normalize_stored_rel_path("tools/tool_1/version_1/files/../evil.scr").is_err());
+        assert!(normalize_stored_rel_path("tools/tool_1/version_1/files/not sanitized.SCR").is_err());
+        assert!(normalize_stored_rel_path("secrets/tool_1/version_1/files/install.scr").is_err());
+    }
+
+    #[test]
+    fn deterministic_collision_handling_is_stable() {
+        let files = vec![
+            InboundToolFile {
+                original_name: "My Script.SCR".to_string(),
+                mime: Some("text/plain".to_string()),
+                data_base64: "YQ==".to_string(),
+            },
+            InboundToolFile {
+                original_name: "My_Script.scr".to_string(),
+                mime: Some("text/plain".to_string()),
+                data_base64: "Yg==".to_string(),
+            },
+            InboundToolFile {
+                original_name: "my script.scr".to_string(),
+                mime: Some("text/plain".to_string()),
+                data_base64: "Yw==".to_string(),
+            },
+        ];
+
+        let staged = stage_inbound_files("tool_1", "version_1", files, &FileLimits::default()).unwrap();
+        let names = staged.into_iter().map(|file| file.original_name).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "My_Script.scr".to_string(),
+                "My_Script_2.scr".to_string(),
+                "my_script_3.scr".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn enforces_file_and_total_size_limits() {
+        let file = InboundToolFile {
+            original_name: "big.scr".to_string(),
+            mime: None,
+            data_base64: "YWJj".to_string(),
+        };
+
+        let per_file_err = stage_inbound_files(
+            "tool_1",
+            "version_1",
+            vec![file.clone()],
+            &FileLimits {
+                max_file_size_bytes: 2,
+                max_total_size_bytes: 10,
+            },
+        )
+        .unwrap_err();
+        assert!(per_file_err
+            .user_message()
+            .contains("exceeds max size"));
+
+        let total_err = stage_inbound_files(
+            "tool_1",
+            "version_1",
+            vec![file.clone(), file],
+            &FileLimits {
+                max_file_size_bytes: 10,
+                max_total_size_bytes: 5,
+            },
+        )
+        .unwrap_err();
+        assert!(total_err
+            .user_message()
+            .contains("Combined file size exceeds"));
     }
 }

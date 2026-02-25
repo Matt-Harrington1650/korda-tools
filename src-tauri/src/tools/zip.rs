@@ -5,6 +5,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -12,8 +13,9 @@ use uuid::Uuid;
 use super::db::{ExportVersionContext, ToolMetadataInput, VersionInsertInput};
 use super::error::{ToolsError, ToolsResult};
 use super::storage::{
-    assert_safe_archive_path, read_stored_file_bytes, sanitize_filename, sha256_hex,
-    DEFAULT_MAX_FILE_SIZE_BYTES, DEFAULT_MAX_VERSION_SIZE_BYTES,
+    assert_safe_archive_path, assert_stored_path_matches_version, build_stored_rel_path,
+    read_stored_file_bytes, sanitize_filename, sha256_hex, DEFAULT_MAX_FILE_SIZE_BYTES,
+    DEFAULT_MAX_VERSION_SIZE_BYTES,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,8 +66,28 @@ pub struct ImportFileBytes {
     pub bytes: Vec<u8>,
 }
 
-pub fn build_manifest(context: &ExportVersionContext) -> ToolExportManifest {
-    ToolExportManifest {
+pub fn build_manifest(context: &ExportVersionContext) -> ToolsResult<ToolExportManifest> {
+    let mut seen_names = HashSet::new();
+    let mut files = Vec::with_capacity(context.files.len());
+
+    for file in &context.files {
+        let original_name = sanitize_filename(&file.original_name)?;
+        if !seen_names.insert(original_name.to_ascii_lowercase()) {
+            return Err(ToolsError::Validation(format!(
+                "Duplicate file name in version: {}",
+                original_name
+            )));
+        }
+
+        files.push(ManifestFile {
+            original_name: original_name.clone(),
+            sha256: file.sha256.clone(),
+            size_bytes: file.size_bytes.max(0) as u64,
+            relative_path: format!("files/{}", original_name),
+        });
+    }
+
+    Ok(ToolExportManifest {
         tool: ManifestTool {
             name: context.tool.name.clone(),
             slug: context.tool.slug.clone(),
@@ -77,17 +99,8 @@ pub fn build_manifest(context: &ExportVersionContext) -> ToolExportManifest {
             version: context.version.version.clone(),
             changelog_md: context.version.changelog_md.clone(),
         },
-        files: context
-            .files
-            .iter()
-            .map(|file| ManifestFile {
-                original_name: file.original_name.clone(),
-                sha256: file.sha256.clone(),
-                size_bytes: file.size_bytes.max(0) as u64,
-                relative_path: format!("files/{}", file.original_name),
-            })
-            .collect(),
-    }
+        files,
+    })
 }
 
 pub fn export_tool_version_zip(
@@ -97,9 +110,15 @@ pub fn export_tool_version_zip(
 ) -> ToolsResult<()> {
     let destination = normalize_destination(destination_path)?;
     let staging = create_temp_dir("tool-export")?;
+    debug!(
+        "custom-tools: zip export start tool_id={} version_id={} destination={}",
+        context.version.tool_id,
+        context.version.id,
+        destination.to_string_lossy()
+    );
 
     let result = (|| -> ToolsResult<()> {
-        let manifest = build_manifest(context);
+        let manifest = build_manifest(context)?;
         let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|error| {
             ToolsError::Zip(format!("Failed to serialize manifest.json: {error}"))
         })?;
@@ -115,7 +134,36 @@ pub fn export_tool_version_zip(
 
         for file in &context.files {
             let sanitized = sanitize_filename(&file.original_name)?;
+            assert_stored_path_matches_version(
+                &file.stored_rel_path,
+                &context.version.tool_id,
+                &context.version.id,
+            )?;
+            let expected_rel_path = build_stored_rel_path(
+                &context.version.tool_id,
+                &context.version.id,
+                &sanitized,
+            )?;
+            if file.stored_rel_path != expected_rel_path {
+                return Err(ToolsError::Zip(format!(
+                    "Stored path mismatch for {}.",
+                    sanitized
+                )));
+            }
             let bytes = read_stored_file_bytes(app, &file.stored_rel_path)?;
+            let expected_size = file.size_bytes.max(0) as usize;
+            if bytes.len() != expected_size {
+                return Err(ToolsError::Zip(format!(
+                    "Stored file size mismatch for {}.",
+                    sanitized
+                )));
+            }
+            if !sha256_hex(&bytes).eq_ignore_ascii_case(file.sha256.trim()) {
+                return Err(ToolsError::Zip(format!(
+                    "Stored file hash mismatch for {}.",
+                    sanitized
+                )));
+            }
             fs::write(files_dir.join(sanitized), bytes)?;
         }
 
@@ -123,6 +171,12 @@ pub fn export_tool_version_zip(
     })();
 
     let _ = fs::remove_dir_all(staging);
+    if result.is_ok() {
+        debug!(
+            "custom-tools: zip export success tool_id={} version_id={}",
+            context.version.tool_id, context.version.id
+        );
+    }
     result
 }
 
@@ -131,6 +185,10 @@ pub fn import_tool_zip(zip_path: &str) -> ToolsResult<ParsedImportArchive> {
     if !zip_path.exists() || !zip_path.is_file() {
         return Err(ToolsError::Zip("Import zip path is invalid.".to_string()));
     }
+    debug!(
+        "custom-tools: zip import start path={}",
+        zip_path.to_string_lossy()
+    );
 
     let extraction_dir = create_temp_dir("tool-import")?;
     let result = (|| -> ToolsResult<ParsedImportArchive> {
@@ -258,11 +316,18 @@ pub fn import_tool_zip(zip_path: &str) -> ToolsResult<ParsedImportArchive> {
             }
         }
 
-        Ok(ParsedImportArchive {
+        let parsed = ParsedImportArchive {
             metadata,
             version,
             files: parsed_files,
-        })
+        };
+        debug!(
+            "custom-tools: zip import parsed tool_slug={} version={} file_count={}",
+            parsed.metadata.slug.clone().unwrap_or_default(),
+            parsed.version.version,
+            parsed.files.len()
+        );
+        Ok(parsed)
     })();
 
     let _ = fs::remove_dir_all(extraction_dir);
@@ -270,6 +335,10 @@ pub fn import_tool_zip(zip_path: &str) -> ToolsResult<ParsedImportArchive> {
 }
 
 pub fn import_tool_zip_payload(file_name: &str, data_base64: &str) -> ToolsResult<ParsedImportArchive> {
+    debug!(
+        "custom-tools: zip payload import start file_name={}",
+        file_name.trim()
+    );
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.trim())
         .map_err(|error| ToolsError::Validation(format!("Invalid zip payload encoding: {error}")))?;
@@ -455,6 +524,9 @@ fn normalize_optional_text(value: Option<String>, max_len: usize) -> ToolsResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
 
     #[test]
     fn generates_manifest_from_export_context() {
@@ -467,6 +539,8 @@ mod tests {
                 tags: vec!["autocad".to_string()],
             },
             version: super::super::db::VersionExport {
+                id: "version-1".to_string(),
+                tool_id: "tool-1".to_string(),
                 version: "1.0.0".to_string(),
                 changelog_md: Some("Initial release".to_string()),
                 instructions_md: "# install".to_string(),
@@ -482,7 +556,7 @@ mod tests {
             }],
         };
 
-        let manifest = build_manifest(&context);
+        let manifest = build_manifest(&context).unwrap();
         assert_eq!(manifest.tool.slug, "cad-toolset");
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].relative_path, "files/install.scr");
@@ -538,5 +612,118 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_dir_all(extracted);
+    }
+
+    #[test]
+    fn manifest_integrity_rejects_sha_mismatch() {
+        let root = create_temp_dir("manifest-integrity").unwrap();
+        let staging = root.join("src");
+        std::fs::create_dir_all(staging.join("files")).unwrap();
+
+        let manifest = ToolExportManifest {
+            tool: ManifestTool {
+                name: "CAD Toolset".to_string(),
+                slug: "cad-toolset".to_string(),
+                description: "CAD helpers".to_string(),
+                category: "cad".to_string(),
+                tags: vec!["autocad".to_string()],
+            },
+            version: ManifestVersion {
+                version: "1.0.0".to_string(),
+                changelog_md: None,
+            },
+            files: vec![ManifestFile {
+                original_name: "install.scr".to_string(),
+                sha256: "deadbeef".to_string(),
+                size_bytes: 3,
+                relative_path: "files/install.scr".to_string(),
+            }],
+        };
+
+        std::fs::write(
+            staging.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(staging.join("instructions.md"), "# install").unwrap();
+        std::fs::write(staging.join("files").join("install.scr"), b"abc").unwrap();
+
+        let zip_path = root.join("archive.zip");
+        compress_directory_to_zip(&staging, &zip_path).unwrap();
+
+        let error = import_tool_zip(zip_path.to_string_lossy().as_ref()).unwrap_err();
+        assert!(error.user_message().contains("SHA256 mismatch"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_zip_slip_entries() {
+        let malicious_paths = [
+            "../evil.txt",
+            "..\\evil.txt",
+            "C:\\evil.txt",
+            "\\\\server\\share\\evil.txt",
+            "/absolute/evil.txt",
+        ];
+
+        for malicious_path in malicious_paths {
+            let root = create_temp_dir("zip-slip").unwrap();
+            let zip_path = root.join("payload.zip");
+            write_zip_with_entries(
+                &zip_path,
+                &[
+                    (
+                        "manifest.json",
+                        serde_json::to_string_pretty(&ToolExportManifest {
+                            tool: ManifestTool {
+                                name: "CAD Toolset".to_string(),
+                                slug: "cad-toolset".to_string(),
+                                description: "CAD helpers".to_string(),
+                                category: "cad".to_string(),
+                                tags: vec!["autocad".to_string()],
+                            },
+                            version: ManifestVersion {
+                                version: "1.0.0".to_string(),
+                                changelog_md: None,
+                            },
+                            files: vec![ManifestFile {
+                                original_name: "install.scr".to_string(),
+                                sha256: sha256_hex(b"abc"),
+                                size_bytes: 3,
+                                relative_path: "files/install.scr".to_string(),
+                            }],
+                        })
+                        .unwrap()
+                        .as_bytes(),
+                    ),
+                    ("instructions.md", b"# install"),
+                    ("files/install.scr", b"abc"),
+                    (malicious_path, b"boom"),
+                ],
+            );
+
+            let error = import_tool_zip(zip_path.to_string_lossy().as_ref()).unwrap_err();
+            assert!(
+                error.user_message().contains("Unsafe zip entry path")
+                    || error.user_message().contains("Unexpected file in archive")
+                    || error.user_message().contains("Failed to execute archive command")
+            );
+
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    fn write_zip_with_entries(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        for (entry_name, content) in entries {
+            writer.start_file(entry_name, options).unwrap();
+            writer.write_all(content).unwrap();
+        }
+
+        writer.finish().unwrap();
     }
 }

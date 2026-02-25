@@ -29,3 +29,6 @@ base64 = "0.22"
 sha2 = "0.10"
 uuid = { version = "1.18", features = ["v4", "serde"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "runtime-tokio"] }
+
+[dev-dependencies]
+zip = "2.2"

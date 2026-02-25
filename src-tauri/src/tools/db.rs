@@ -6,6 +6,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use super::error::{ToolsError, ToolsResult};
+use super::storage::{normalize_stored_rel_path, sanitize_filename};
 
 pub const DB_FILE_NAME: &str = "korda_tools.db";
 
@@ -123,6 +124,8 @@ pub struct ToolMetadataExport {
 
 #[derive(Debug, Clone)]
 pub struct VersionExport {
+    pub id: String,
+    pub tool_id: String,
     pub version: String,
     pub changelog_md: Option<String>,
     pub instructions_md: String,
@@ -372,6 +375,29 @@ pub async fn delete_tool(pool: &SqlitePool, tool_id: &str) -> ToolsResult<()> {
     Ok(())
 }
 
+pub async fn delete_tool_version(pool: &SqlitePool, version_id: &str) -> ToolsResult<String> {
+    let row = sqlx::query("SELECT tool_id FROM custom_library_tool_versions WHERE id = ?1")
+        .bind(version_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| ToolsError::NotFound("Tool version not found.".to_string()))?;
+
+    let tool_id: String = row.get("tool_id");
+    sqlx::query("DELETE FROM custom_library_tool_versions WHERE id = ?1")
+        .bind(version_id)
+        .execute(pool)
+        .await?;
+
+    let now = now_epoch_millis()?;
+    sqlx::query("UPDATE custom_library_tools SET updated_at = ?2 WHERE id = ?1")
+        .bind(&tool_id)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+    Ok(tool_id)
+}
+
 pub async fn find_tool_id_by_slug(pool: &SqlitePool, slug: &str) -> ToolsResult<Option<String>> {
     let row = sqlx::query("SELECT id FROM custom_library_tools WHERE slug = ?1")
         .bind(slug)
@@ -426,6 +452,8 @@ pub async fn get_export_context(
             tags,
         },
         version: VersionExport {
+            id: version_row.get("version_id"),
+            tool_id,
             version: version_row.get("version"),
             changelog_md: version_row.get("changelog_md"),
             instructions_md: version_row.get("instructions_md"),
@@ -441,6 +469,8 @@ async fn insert_files(
     created_at: i64,
 ) -> ToolsResult<()> {
     for file in files {
+        let normalized_name = sanitize_filename(&file.original_name)?;
+        let normalized_rel_path = normalize_stored_rel_path(&file.stored_rel_path)?;
         let file_id = Uuid::new_v4().to_string();
         sqlx::query(
             "INSERT INTO custom_library_tool_files
@@ -449,8 +479,8 @@ async fn insert_files(
         )
         .bind(file_id)
         .bind(version_id)
-        .bind(&file.original_name)
-        .bind(&file.stored_rel_path)
+        .bind(normalized_name)
+        .bind(normalized_rel_path)
         .bind(&file.sha256)
         .bind(file.size_bytes)
         .bind(&file.mime)
