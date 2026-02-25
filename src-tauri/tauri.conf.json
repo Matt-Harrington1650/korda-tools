@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "AI Tool Hub",
+  "productName": "Korda Tools",
   "version": "0.1.0",
   "identifier": "com.mattharrington.kordatools",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI Tool Hub",
+        "title": "Korda Tools",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -45,7 +45,7 @@
   "plugins": {
     "sql": {
       "preload": [
-        "sqlite:ai_tool_hub.db"
+        "sqlite:korda_tools.db"
       ]
     }
   }

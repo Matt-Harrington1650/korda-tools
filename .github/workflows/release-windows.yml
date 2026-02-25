@@ -61,8 +61,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: app-v__VERSION__
-          releaseName: 'AI Tool Hub v__VERSION__'
+          releaseName: 'Korda Tools v__VERSION__'
           releaseBody: 'Windows build artifacts and updater signatures.'
           releaseDraft: true
           prerelease: false
-

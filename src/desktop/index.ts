@@ -8,3 +8,18 @@ export { createNotificationService } from './notifications/factory';
 export type { NotificationService } from './notifications/NotificationService';
 export { createUpdaterService } from './updater/factory';
 export type { UpdaterService, UpdateCheckResult } from './updater/UpdaterService';
+export { createCustomToolsLibraryService } from './customTools/factory';
+export type {
+  AddCustomToolVersionInput,
+  CreateCustomToolInput,
+  CreateCustomToolResult,
+  CustomToolDetail,
+  CustomToolFileInput,
+  CustomToolListFilters,
+  CustomToolSummary,
+  CustomToolsLibraryService,
+  ExportZipPayload,
+  ImportZipPayloadInput,
+  ImportZipPreview,
+  ImportZipResult,
+} from './customTools/CustomToolsLibraryService';

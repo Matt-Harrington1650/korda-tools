@@ -30,10 +30,10 @@ export function DashboardToolbar({
     <section className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">AI Tool Hub</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Korda Tools</h2>
           <p className="text-sm text-slate-600">Browse and filter registered tools.</p>
         </div>
-        <Link className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800" to="/tools/new">
+        <Link className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800" to="/registry/new">
           Add Tool
         </Link>
       </div>

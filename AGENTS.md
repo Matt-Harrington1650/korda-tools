@@ -1,7 +1,7 @@
-# AGENTS.md — AI Tool Hub project rules
+# AGENTS.md â€” Korda Tools project rules
 
 ## Goal
-Build a desktop-first AI Tool Hub MVP with:
+Build a desktop-first Korda Tools MVP with:
 - Dashboard (tool cards/grid/list toggle)
 - Add Tool flow
 - Tool detail page
@@ -36,3 +36,4 @@ Build a desktop-first AI Tool Hub MVP with:
 - Use clear naming
 - Lightweight comments only at extension points
 - Do not overengineer
+

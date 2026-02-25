@@ -85,7 +85,7 @@ export function SettingsPanel() {
       const timestamp = new Date().toISOString().replaceAll(':', '-');
 
       anchor.href = url;
-      anchor.download = `ai-tool-hub-export-${timestamp}.json`;
+      anchor.download = `korda-tools-export-${timestamp}.json`;
       anchor.click();
 
       URL.revokeObjectURL(url);

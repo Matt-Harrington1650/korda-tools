@@ -1,6 +1,6 @@
 import type { SqliteClient } from './SqliteClient';
 
-const SQLITE_DB_URL = 'sqlite:ai_tool_hub.db';
+const SQLITE_DB_URL = 'sqlite:korda_tools.db';
 
 type DatabaseLike = {
   execute: (query: string, bindValues?: unknown[]) => Promise<unknown>;

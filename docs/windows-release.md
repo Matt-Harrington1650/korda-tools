@@ -26,7 +26,7 @@ Because `src-tauri/tauri.conf.json` enables `"bundle.createUpdaterArtifacts": tr
 Generate updater signing keys with the Tauri signer CLI:
 
 ```bash
-npx tauri signer generate -w ~/.tauri/ai-tool-hub.key
+npx tauri signer generate -w ~/.tauri/korda-tools.key
 ```
 
 Set:
@@ -62,4 +62,3 @@ Typical Windows artifacts include:
 - updater metadata JSON (for updater-enabled builds)
 
 The GitHub release workflow uploads generated assets to the draft release.
-

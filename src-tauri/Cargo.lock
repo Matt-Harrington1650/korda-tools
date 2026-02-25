@@ -85,14 +85,18 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "keyring",
  "log",
  "serde",
  "serde_json",
+ "sha2",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-log",
  "tauri-plugin-sql",
+ "uuid",
 ]
 
 [[package]]

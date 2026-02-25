@@ -44,7 +44,7 @@ export function ToolCard({ tool, compact = false }: ToolCardProps) {
         <p className="text-xs text-slate-500">Updated {formatTimestamp(tool.updatedAt)}</p>
         <Link
           className="inline-flex items-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
-          to={`/tools/${tool.id}`}
+          to={`/registry/${tool.id}`}
         >
           Open
         </Link>
