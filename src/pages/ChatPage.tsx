@@ -77,7 +77,7 @@ export function ChatPage() {
       map.set(trace.id, trace);
     });
     return map;
-  }, [selectedThread?.toolCalls]);
+  }, [selectedThread]);
 
   const cancelRun = (): void => {
     controllerRef.current?.abort(new DOMException('Chat tool call cancelled.', 'AbortError'));

@@ -620,4 +620,33 @@ mod tests {
         )
         .is_err());
     }
+
+    #[test]
+    fn rejects_allowlist_bypass_file_names() {
+        assert!(sanitize_filename("payload.scr.exe").is_err());
+        assert!(sanitize_filename("payload.scr::$DATA").is_err());
+        assert!(sanitize_filename("payload%2Escr").is_err());
+        assert!(sanitize_filename("payload.scr/extra").is_err());
+    }
+
+    #[test]
+    fn stages_many_files_with_deterministic_unique_names() {
+        let payload = base64::engine::general_purpose::STANDARD.encode(vec![b'a'; 1024]);
+        let files = (0..250)
+            .map(|index| InboundToolFile {
+                original_name: format!("Batch File {index}.scr"),
+                mime: None,
+                data_base64: payload.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        let staged =
+            stage_inbound_files("tool_1", "version_1", files, &FileLimits::default()).unwrap();
+        assert_eq!(staged.len(), 250);
+
+        let mut unique = HashSet::new();
+        for file in staged {
+            assert!(unique.insert(file.original_name.to_ascii_lowercase()));
+        }
+    }
 }

@@ -9,6 +9,7 @@ export type { NotificationService } from './notifications/NotificationService';
 export { createUpdaterService } from './updater/factory';
 export type { UpdaterService, UpdateCheckResult } from './updater/UpdaterService';
 export { createCustomToolsLibraryService } from './customTools/factory';
+export { createHelpCenterService } from './help/factory';
 export type {
   AddCustomToolVersionInput,
   CreateCustomToolInput,
@@ -23,3 +24,10 @@ export type {
   ImportZipPreview,
   ImportZipResult,
 } from './customTools/CustomToolsLibraryService';
+export type {
+  HelpCenterService,
+  HelpCreatePageInput,
+  HelpPageRecord,
+  HelpPageSummary,
+  HelpUpdatePageInput,
+} from './help/HelpCenterService';

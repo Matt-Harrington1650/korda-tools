@@ -240,7 +240,7 @@ pub fn import_tool_zip(zip_path: &str) -> ToolsResult<ParsedImportArchive> {
             }
 
             let sanitized = sanitize_filename(&file.original_name)?;
-            if !seen_names.insert(sanitized.clone()) {
+            if !seen_names.insert(sanitized.to_ascii_lowercase()) {
                 return Err(ToolsError::Validation(format!(
                     "Duplicate file in manifest: {sanitized}"
                 )));
@@ -657,6 +657,61 @@ mod tests {
     }
 
     #[test]
+    fn manifest_integrity_rejects_duplicate_file_names() {
+        let root = create_temp_dir("manifest-duplicate").unwrap();
+        let staging = root.join("src");
+        std::fs::create_dir_all(staging.join("files")).unwrap();
+
+        let manifest = ToolExportManifest {
+            tool: ManifestTool {
+                name: "CAD Toolset".to_string(),
+                slug: "cad-toolset".to_string(),
+                description: "CAD helpers".to_string(),
+                category: "cad".to_string(),
+                tags: vec!["autocad".to_string()],
+            },
+            version: ManifestVersion {
+                version: "1.0.0".to_string(),
+                changelog_md: None,
+            },
+            files: vec![
+                ManifestFile {
+                    original_name: "install.scr".to_string(),
+                    sha256: sha256_hex(b"def"),
+                    size_bytes: 3,
+                    relative_path: "files/install.scr".to_string(),
+                },
+                ManifestFile {
+                    original_name: "install.scr".to_string(),
+                    sha256: sha256_hex(b"def"),
+                    size_bytes: 3,
+                    relative_path: "files/install.scr".to_string(),
+                },
+            ],
+        };
+
+        std::fs::write(
+            staging.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(staging.join("instructions.md"), "# install").unwrap();
+        std::fs::write(staging.join("files").join("install.scr"), b"def").unwrap();
+
+        let zip_path = root.join("archive.zip");
+        compress_directory_to_zip(&staging, &zip_path).unwrap();
+
+        let error = import_tool_zip(zip_path.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            error.user_message().contains("Duplicate file in manifest"),
+            "unexpected error: {}",
+            error.user_message()
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn rejects_zip_slip_entries() {
         let malicious_paths = [
             "../evil.txt",
@@ -710,6 +765,53 @@ mod tests {
 
             let _ = std::fs::remove_dir_all(root);
         }
+    }
+
+    #[test]
+    fn stress_repeated_import_round_trips() {
+        let root = create_temp_dir("zip-stress").unwrap();
+
+        for index in 0..8 {
+            let staging = root.join(format!("src-{index}"));
+            std::fs::create_dir_all(staging.join("files")).unwrap();
+
+            let bytes = format!("payload-{index}").into_bytes();
+            let manifest = ToolExportManifest {
+                tool: ManifestTool {
+                    name: format!("CAD Toolset {index}"),
+                    slug: format!("cad-toolset-{index}"),
+                    description: "CAD helpers".to_string(),
+                    category: "cad".to_string(),
+                    tags: vec!["autocad".to_string()],
+                },
+                version: ManifestVersion {
+                    version: "1.0.0".to_string(),
+                    changelog_md: None,
+                },
+                files: vec![ManifestFile {
+                    original_name: "install.scr".to_string(),
+                    sha256: sha256_hex(&bytes),
+                    size_bytes: bytes.len() as u64,
+                    relative_path: "files/install.scr".to_string(),
+                }],
+            };
+
+            std::fs::write(
+                staging.join("manifest.json"),
+                serde_json::to_string_pretty(&manifest).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(staging.join("instructions.md"), "# install").unwrap();
+            std::fs::write(staging.join("files").join("install.scr"), bytes).unwrap();
+
+            let zip_path = root.join(format!("archive-{index}.zip"));
+            compress_directory_to_zip(&staging, &zip_path).unwrap();
+            let parsed = import_tool_zip(zip_path.to_string_lossy().as_ref()).unwrap();
+            assert_eq!(parsed.files.len(), 1);
+            assert_eq!(parsed.version.version, "1.0.0");
+        }
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     fn write_zip_with_entries(path: &Path, entries: Vec<(String, Vec<u8>)>) {

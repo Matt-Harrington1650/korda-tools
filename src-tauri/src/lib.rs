@@ -1,3 +1,4 @@
+mod help;
 mod secrets;
 mod tools;
 
@@ -83,6 +84,12 @@ fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: include_str!("../migrations/0013_harden_custom_tool_library.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 14,
+            description: "create_help_center",
+            sql: include_str!("../migrations/0014_create_help_center.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -103,7 +110,14 @@ pub fn run() {
             tools::commands::tool_export_zip_payload,
             tools::commands::tool_preview_import_zip_payload,
             tools::commands::tool_import_zip,
-            tools::commands::tool_import_zip_payload
+            tools::commands::tool_import_zip_payload,
+            help::commands::help_list_pages,
+            help::commands::help_get_page,
+            help::commands::help_create_page,
+            help::commands::help_update_page,
+            help::commands::help_delete_page,
+            help::commands::app_state_get,
+            help::commands::app_state_set
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()

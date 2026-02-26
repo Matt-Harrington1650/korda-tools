@@ -155,7 +155,7 @@ class Semaphore {
 const globalSemaphore = new Semaphore(DEFAULT_PIPELINE_CONFIG.globalMaxConcurrentRuns);
 const perToolSemaphores = new Map<string, Semaphore>();
 
-let queueState: ExecutionQueueState = {
+const queueState: ExecutionQueueState = {
   global: { queued: 0, running: 0 },
   tools: {},
 };

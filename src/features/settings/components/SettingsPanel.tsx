@@ -15,6 +15,7 @@ import { useToolRunLogStore } from '../../tools/store/toolRunLogStore';
 import { useScheduledRunLogStore } from '../../workflows/store';
 import { settingsFormSchema } from '../../../schemas/settingsSchemas';
 import { useSettingsStore } from '../store';
+import { helpCenterService } from '../../helpCenter/service';
 
 export function SettingsPanel() {
   const settings = useSettingsStore((state) => state.settings);
@@ -34,6 +35,10 @@ export function SettingsPanel() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateError, setUpdateError] = useState('');
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [developerModeLoading, setDeveloperModeLoading] = useState(true);
+  const [developerModeError, setDeveloperModeError] = useState('');
+  const [developerModeMessage, setDeveloperModeMessage] = useState('');
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const updaterServiceRef = useRef(createUpdaterService());
 
@@ -64,6 +69,32 @@ export function SettingsPanel() {
       scheduler: settings.scheduler,
     });
   }, [reset, settings]);
+
+  useEffect(() => {
+    let mounted = true;
+    void helpCenterService
+      .getAppState('developer_mode')
+      .then((value) => {
+        if (!mounted) {
+          return;
+        }
+        setDeveloperMode(value?.toLowerCase() === 'true');
+      })
+      .catch(() => {
+        if (mounted) {
+          setDeveloperMode(false);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setDeveloperModeLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleExportData = async (): Promise<void> => {
     setBackupError('');
@@ -138,6 +169,18 @@ export function SettingsPanel() {
       setUpdateError(error instanceof Error ? error.message : 'Failed to check for updates.');
     } finally {
       setIsCheckingUpdates(false);
+    }
+  };
+
+  const handleToggleDeveloperMode = async (enabled: boolean): Promise<void> => {
+    setDeveloperModeError('');
+    setDeveloperModeMessage('');
+    try {
+      await helpCenterService.setAppState('developer_mode', enabled ? 'true' : 'false');
+      setDeveloperMode(enabled);
+      setDeveloperModeMessage(enabled ? 'Developer Mode enabled.' : 'Developer Mode disabled.');
+    } catch (error) {
+      setDeveloperModeError(error instanceof Error ? error.message : 'Failed to update Developer Mode.');
     }
   };
 
@@ -257,6 +300,28 @@ export function SettingsPanel() {
           {savedMessage ? <span className="text-xs text-slate-600">{savedMessage}</span> : null}
         </div>
       </form>
+
+      <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">Developer Mode</h4>
+          <p className="mt-1 text-xs text-slate-600">
+            Enables editing built-in Help Center pages and developer-facing documentation workflows.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            checked={developerMode}
+            disabled={developerModeLoading}
+            onChange={(event) => {
+              void handleToggleDeveloperMode(event.target.checked);
+            }}
+            type="checkbox"
+          />
+          Enable Developer Mode
+        </label>
+        {developerModeMessage ? <p className="text-xs text-emerald-700">{developerModeMessage}</p> : null}
+        {developerModeError ? <p className="text-xs text-rose-700">{developerModeError}</p> : null}
+      </div>
 
       <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
         <div>

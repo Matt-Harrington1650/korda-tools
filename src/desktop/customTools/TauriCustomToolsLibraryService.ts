@@ -25,6 +25,7 @@ export class TauriCustomToolsLibraryService implements CustomToolsLibraryService
   getTool(toolId: string): Promise<CustomToolDetail> {
     return tauriInvoke<CustomToolDetail>('tool_get', {
       tool_id: toolId,
+      toolId,
     });
   }
 
@@ -43,12 +44,14 @@ export class TauriCustomToolsLibraryService implements CustomToolsLibraryService
   deleteTool(toolId: string): Promise<void> {
     return tauriInvoke<void>('tool_delete', {
       tool_id: toolId,
+      toolId,
     });
   }
 
   exportToolVersionZipPayload(toolVersionId: string): Promise<ExportZipPayload> {
     return tauriInvoke<ExportZipPayload>('tool_export_zip_payload', {
       tool_version_id: toolVersionId,
+      toolVersionId,
     });
   }
 
