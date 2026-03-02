@@ -9,6 +9,7 @@ import type { CredentialRef } from '../domain/credential';
 import { createCredentialRef, listCredentialRefs, upsertCredentialRef } from '../features/credentials/credentialService';
 import { useToolExecution } from '../features/tools/hooks';
 import { useToolRegistryStore } from '../features/tools/store/toolRegistryStore';
+import type { ExecutionGovernanceContext } from '../execution';
 import {
   createDefaultPluginConfig,
   mapLegacyToolToPluginConfig,
@@ -73,6 +74,12 @@ const toolDetailFormSchema = z.object({
 type ToolDetailFormValues = z.infer<typeof toolDetailFormSchema>;
 
 const toTagText = (tags: string[]): string => tags.join(', ');
+const sensitivityLevelOptions: ExecutionGovernanceContext['sensitivityLevel'][] = [
+  'Public',
+  'Internal',
+  'Confidential',
+  'Client-Confidential',
+];
 
 export function ToolDetailPage() {
   const navigate = useNavigate();
@@ -82,6 +89,13 @@ export function ToolDetailPage() {
   const deleteTool = useToolRegistryStore((state) => state.deleteTool);
   const [credentials, setCredentials] = useState<CredentialRef[]>([]);
   const [submitError, setSubmitError] = useState('');
+  const [governanceWorkspaceId, setGovernanceWorkspaceId] = useState('workspace-default');
+  const [governanceProjectId, setGovernanceProjectId] = useState('project-default');
+  const [governanceActorId, setGovernanceActorId] = useState('actor-local-user');
+  const [governanceSensitivityLevel, setGovernanceSensitivityLevel] =
+    useState<ExecutionGovernanceContext['sensitivityLevel']>('Internal');
+  const [governanceOverrideId, setGovernanceOverrideId] = useState('');
+  const [governanceProviderId, setGovernanceProviderId] = useState('');
   const secretVault = createSecretVault();
 
   const tool = toolId ? getToolById(toolId) : undefined;
@@ -140,6 +154,23 @@ export function ToolDetailPage() {
   }, [reset, tool]);
 
   useEffect(() => {
+    if (!tool) {
+      return;
+    }
+
+    if (tool.type !== 'openai_compatible') {
+      return;
+    }
+
+    try {
+      const parsed = new URL(tool.endpoint);
+      setGovernanceProviderId((current) => current || parsed.hostname.toLowerCase());
+    } catch {
+      // Keep explicit provider input unchanged when endpoint is not URL-parseable.
+    }
+  }, [tool]);
+
+  useEffect(() => {
     let mounted = true;
 
     void listCredentialRefs().then((items) => {
@@ -169,6 +200,31 @@ export function ToolDetailPage() {
     setPluginErrors([]);
     setPluginConfig(createDefaultPluginConfig(selectedToolType));
   }, [selectedToolType]);
+  const executionGovernanceContext = useMemo<ExecutionGovernanceContext | null>(() => {
+    const workspaceId = governanceWorkspaceId.trim();
+    const projectId = governanceProjectId.trim();
+    const actorId = governanceActorId.trim();
+    if (!workspaceId || !projectId || !actorId) {
+      return null;
+    }
+
+    return {
+      workspaceId,
+      projectId,
+      actorId,
+      sensitivityLevel: governanceSensitivityLevel,
+      externalAiOverrideId: governanceOverrideId.trim() || null,
+      providerId: governanceProviderId.trim() || null,
+    };
+  }, [
+    governanceActorId,
+    governanceOverrideId,
+    governanceProjectId,
+    governanceProviderId,
+    governanceSensitivityLevel,
+    governanceWorkspaceId,
+  ]);
+
   const {
     executeAction,
     cancelExecution,
@@ -188,7 +244,7 @@ export function ToolDetailPage() {
     removeAttachment,
     clearAttachments,
     exportRunOutput,
-  } = useToolExecution(tool);
+  } = useToolExecution(tool, executionGovernanceContext);
   const executionManifest = tool ? pluginRegistry.getManifestByToolType(tool.type) : null;
   const executionSupportsFiles = executionManifest?.capabilities.supportsFiles === true;
   const credentialOptions = useMemo(() => {
@@ -480,6 +536,77 @@ export function ToolDetailPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-base font-semibold text-slate-900">Execution</h3>
         <p className="mt-1 text-sm text-slate-600">Run execution through the adapter pipeline.</p>
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Governance Context</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Required for governed execution and mandatory for external AI providers.
+          </p>
+          <div className="mt-2 grid gap-3 md:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Workspace ID</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setGovernanceWorkspaceId(event.target.value)}
+                value={governanceWorkspaceId}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Project ID</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setGovernanceProjectId(event.target.value)}
+                value={governanceProjectId}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Actor ID</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setGovernanceActorId(event.target.value)}
+                value={governanceActorId}
+              />
+            </label>
+          </div>
+          <div className="mt-2 grid gap-3 md:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Sensitivity</span>
+              <select
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) =>
+                  setGovernanceSensitivityLevel(event.target.value as ExecutionGovernanceContext['sensitivityLevel'])
+                }
+                value={governanceSensitivityLevel}
+              >
+                {sensitivityLevelOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Provider ID (optional)</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setGovernanceProviderId(event.target.value)}
+                value={governanceProviderId}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-700">Override ID (optional)</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setGovernanceOverrideId(event.target.value)}
+                value={governanceOverrideId}
+              />
+            </label>
+          </div>
+        </div>
+        {tool.type === 'openai_compatible' && executionGovernanceContext === null ? (
+          <p className="mt-2 text-xs text-rose-700">
+            OpenAI-compatible execution is blocked until workspace, project, and actor IDs are provided.
+          </p>
+        ) : null}
         {executionSupportsFiles ? (
           <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-wrap items-center gap-2">

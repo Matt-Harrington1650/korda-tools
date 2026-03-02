@@ -36,6 +36,14 @@ export async function runMigrationsOnStartup(
   dbOptions: OpenSqliteOptions,
   migrations: readonly MigrationFile[],
 ): Promise<void> {
+  const tsRunnerEnabled = false;
+  if (!tsRunnerEnabled) {
+    throw new AppError(
+      'TS_MIGRATION_RUNNER_DISABLED',
+      'TypeScript migration runner is non-authoritative and disabled for production bootstrap. Use src-tauri migrations.',
+    );
+  }
+
   const connection = await openSqlite(dbOptions);
 
   try {
@@ -77,6 +85,4 @@ function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-// TODO: Load SQL from /migrations files via backend file service or generated manifest.
-// TODO: Add checksum validation for migration tamper detection.
-// TODO: Call runMigrationsOnStartup from the app bootstrap hook before service initialization.
+// NOTE: Runtime startup must use authoritative Tauri migration chain in src-tauri/src/lib.rs.

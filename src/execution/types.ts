@@ -19,12 +19,24 @@ export type ExecutionAttachment = {
   dataBase64: string;
 };
 
+export type ExecutionGovernanceContext = {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  sensitivityLevel: 'Public' | 'Internal' | 'Confidential' | 'Client-Confidential';
+  externalAiOverrideId?: string | null;
+  providerId?: string | null;
+};
+
 export type ExecutionRequest = {
   method: string;
   url: string;
   headers: Record<string, string>;
   body: string | null;
   attachments?: ExecutionAttachment[];
+  toolType?: ToolType;
+  toolId?: string;
+  governanceContext?: ExecutionGovernanceContext | null;
 };
 
 export type RawExecutionResponse = {
@@ -51,6 +63,7 @@ export type AdapterExecutionContext = {
   actionType: ExecutionActionType;
   timeoutMs: number;
   signal: AbortSignal;
+  governanceContext?: ExecutionGovernanceContext | null;
 };
 
 export type ToolExecutionError = {

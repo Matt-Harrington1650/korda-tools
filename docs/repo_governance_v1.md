@@ -29,7 +29,7 @@ Required PR conditions:
 Binding policy:
 - Every path must have an owner rule.
 - Changes to governance, security, and release workflows require owner review.
-- If team ownership is not yet assigned, use placeholder owner and replace before first external contributor merge.
+- Placeholder owners are prohibited on protected paths.
 
 Minimum ownership coverage:
 - `*` default owner.
@@ -37,6 +37,12 @@ Minimum ownership coverage:
 - `docs/` owner.
 - `src-tauri/` owner.
 - `src/` owner.
+
+## Evaluation Artifacts Policy
+Binding decision:
+- `/internal/evaluation/` is a tracked repository path and must not be left untracked at PR time.
+- Evaluation artifacts are immutable evidence for architecture/security readiness and must remain auditable in git history.
+- Experimental local notes belong under `/internal/local/` (gitignored), not `/internal/evaluation/`.
 
 ## Commit Conventions
 Conventional Commits required:

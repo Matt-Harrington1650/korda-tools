@@ -1,12 +1,18 @@
-import { createSecretVault } from '../desktop';
+import { createSecretVault, createSqliteClient, type SqliteClient } from '../desktop';
 import type { Tool } from '../domain/tool';
 import { updateCredentialLastUsed } from '../features/credentials/credentialService';
+import { AppError } from '../lib/errors';
+import { isTauriRuntime } from '../lib/runtime';
+import { validateAiResponseContract } from '../services/ai/AiResponseContract';
+import { FailClosedPolicyEnforcer } from '../services/policy/FailClosedPolicyEnforcer';
+import type { PolicyRepository, ProjectRole, SensitivityLevel } from '../services/policy/types';
 import type { ToolAdapter } from './ToolAdapter';
 import { createRequestSummary, previewText } from './helpers';
 import { toolAdapterRegistry } from './registry';
 import type {
   ExecutionAttachment,
   ExecutionEvent,
+  ExecutionGovernanceContext,
   ExecutionPipelineConfig,
   ExecutionQueueState,
   ExecutionResult,
@@ -27,6 +33,7 @@ type ExecuteToolOptions = {
   retryPolicy?: Partial<PipelineRetryPolicy>;
   signal?: AbortSignal;
   stream?: boolean;
+  governanceContext?: ExecutionGovernanceContext | null;
   registry?: AdapterResolver;
 };
 
@@ -48,7 +55,233 @@ const DEFAULT_PIPELINE_CONFIG: ExecutionPipelineConfig = {
   },
 };
 
+type ExternalAiEvaluation = {
+  providerId: string;
+  decision: Awaited<ReturnType<FailClosedPolicyEnforcer['authorizeExternalAi']>>;
+};
+
+type AiQueryLogInput = {
+  governanceContext: ExecutionGovernanceContext;
+  requestBody: string | null;
+  responseText: string | null;
+  providerId: string;
+  policyDecision: 'allowed' | 'blocked' | 'override';
+  externalAiUsed: boolean;
+  citationCount: number;
+  confidenceScore: number | null;
+  corpusCoveragePct: number | null;
+  newestSourceDate: string | null;
+  reviewRequired: boolean;
+  reviewReasons: readonly string[];
+};
+
 let pipelineConfig: ExecutionPipelineConfig = JSON.parse(JSON.stringify(DEFAULT_PIPELINE_CONFIG)) as ExecutionPipelineConfig;
+
+const createExecutionPolicyRepository = (): PolicyRepository => {
+  return {
+    hasProjectRole: async (
+      projectId: string,
+      actorId: string,
+      roles: readonly ProjectRole[],
+    ): Promise<boolean> => {
+      if (!isTauriRuntime() || roles.length === 0) {
+        return false;
+      }
+
+      try {
+        const sqlite = createSqliteClient();
+        const placeholders = roles.map(() => '?').join(', ');
+        const rows = await sqlite.select<{ actor_id: string }>(
+          `
+          SELECT actor_id
+          FROM project_role_bindings
+          WHERE project_id = ?
+            AND actor_id = ?
+            AND revoked_at_utc IS NULL
+            AND role IN (${placeholders})
+          LIMIT 1
+          `,
+          [projectId, actorId, ...roles],
+        );
+        return Boolean(rows[0]);
+      } catch {
+        return false;
+      }
+    },
+    hasExternalAiOverride: async (input): Promise<boolean> => {
+      if (!isTauriRuntime()) {
+        return false;
+      }
+
+      try {
+        const sqlite = createSqliteClient();
+        const params: unknown[] = [
+          input.projectId,
+          input.actorId,
+          input.providerId,
+          input.sensitivityLevel,
+          input.asOfUtc,
+        ];
+        let overrideIdWhere = '';
+        if (input.overrideId) {
+          overrideIdWhere = 'AND id = ?';
+          params.push(input.overrideId);
+        }
+
+        const rows = await sqlite.select<{ id: string }>(
+          `
+          SELECT id
+          FROM policy_overrides
+          WHERE project_id = ?
+            AND actor_id = ?
+            AND provider_id = ?
+            AND sensitivity_level = ?
+            AND revoked_at_utc IS NULL
+            AND (expires_at_utc IS NULL OR expires_at_utc > ?)
+            ${overrideIdWhere}
+          LIMIT 1
+          `,
+          params,
+        );
+        return Boolean(rows[0]);
+      } catch {
+        return false;
+      }
+    },
+  };
+};
+
+const externalAiProviderFromTool = (tool: Tool, governanceContext?: ExecutionGovernanceContext | null): string => {
+  const provided = governanceContext?.providerId?.trim();
+  if (provided) {
+    return provided;
+  }
+
+  try {
+    const endpoint = new URL(tool.endpoint);
+    return endpoint.hostname.toLowerCase();
+  } catch {
+    return 'openai_compatible';
+  }
+};
+
+const evaluateExternalAiPolicy = async (
+  tool: Tool,
+  actionType: 'test' | 'run',
+  governanceContext?: ExecutionGovernanceContext | null,
+): Promise<ExternalAiEvaluation | null> => {
+  if (tool.type !== 'openai_compatible' || actionType !== 'run') {
+    return null;
+  }
+
+  const providerId = externalAiProviderFromTool(tool, governanceContext);
+  const policyEnforcer = new FailClosedPolicyEnforcer(createExecutionPolicyRepository());
+  const decision = await policyEnforcer.authorizeExternalAi({
+    scope: governanceContext ?? null,
+    providerId,
+    sensitivityLevel: (governanceContext?.sensitivityLevel ?? 'Internal') as SensitivityLevel,
+    overrideId: governanceContext?.externalAiOverrideId ?? null,
+  });
+
+  return {
+    providerId,
+    decision,
+  };
+};
+
+const toNullableNumber = (value: number | null | undefined): number | null => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return null;
+  }
+  return value;
+};
+
+const toNullableString = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+  return value.trim();
+};
+
+const truncateText = (value: string, max: number): string => {
+  if (value.length <= max) {
+    return value;
+  }
+  return value.slice(0, max);
+};
+
+const tryExtractModelId = (requestBody: string | null): string | null => {
+  if (!requestBody) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(requestBody) as Record<string, unknown>;
+    if (typeof parsed.model === 'string' && parsed.model.trim().length > 0) {
+      return parsed.model.trim();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const persistAiQueryLog = async (input: AiQueryLogInput): Promise<void> => {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  try {
+    const sqlite: SqliteClient = createSqliteClient();
+    const now = new Date().toISOString();
+    const aiQueryId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await sqlite.execute(
+      `
+      INSERT INTO ai_queries (
+        id,
+        workspace_id,
+        project_id,
+        query_text,
+        response_text,
+        provider_id,
+        model_id,
+        external_ai_used,
+        policy_decision,
+        citation_count,
+        confidence_score,
+        corpus_coverage_pct,
+        newest_source_date,
+        created_by,
+        created_at_utc,
+        review_required,
+        review_reasons_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        aiQueryId,
+        input.governanceContext.workspaceId,
+        input.governanceContext.projectId,
+        truncateText(input.requestBody ?? '', 20_000),
+        toNullableString(input.responseText),
+        input.providerId,
+        toNullableString(tryExtractModelId(input.requestBody)),
+        input.externalAiUsed ? 1 : 0,
+        input.policyDecision,
+        Math.max(0, Math.trunc(input.citationCount)),
+        toNullableNumber(input.confidenceScore),
+        toNullableNumber(input.corpusCoveragePct),
+        toNullableString(input.newestSourceDate),
+        input.governanceContext.actorId,
+        now,
+        input.reviewRequired ? 1 : 0,
+        JSON.stringify([...input.reviewReasons]),
+      ],
+    );
+  } catch {
+    // Governance logging is best-effort in non-critical execution path.
+  }
+};
 
 const now = (): number => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
@@ -270,6 +503,14 @@ const acquireExecutionSlots = async (
 };
 
 const toErrorDetails = (value: unknown): { message: string; details: string; stack?: string } => {
+  if (value instanceof AppError) {
+    return {
+      message: value.message,
+      details: value.details ? JSON.stringify(value.details) : value.message,
+      stack: value.stack,
+    };
+  }
+
   if (value instanceof Error) {
     return {
       message: value.message,
@@ -302,6 +543,15 @@ const isTimeoutError = (message: string): boolean => {
 };
 
 const resolveExecutionError = (error: unknown, signal?: AbortSignal): ToolExecutionError => {
+  if (error instanceof AppError) {
+    return {
+      code: error.code,
+      message: error.message,
+      details: error.details ? JSON.stringify(error.details) : error.message,
+      stack: error.stack,
+    };
+  }
+
   const parsed = toErrorDetails(error);
 
   if (signal?.aborted) {
@@ -521,6 +771,7 @@ export const executeToolWithPipelineStream = async function* ({
   retryPolicy,
   signal,
   stream = false,
+  governanceContext = null,
   registry = toolAdapterRegistry,
 }: ExecuteToolOptions): AsyncGenerator<ExecutionEvent, ExecutionResult, void> {
   const adapter = registry.get(tool.type);
@@ -580,6 +831,7 @@ export const executeToolWithPipelineStream = async function* ({
   let requestSummary = '';
   let request: ReturnType<typeof adapter.buildRequest> | null = null;
   let releaseSlots: (() => void) | null = null;
+  let externalAiEvaluation: ExternalAiEvaluation | null = null;
 
   try {
     yield {
@@ -609,8 +861,37 @@ export const executeToolWithPipelineStream = async function* ({
         ...builtRequest.headers,
         ...authHeaders,
       },
+      toolType: tool.type,
+      toolId: tool.id,
+      governanceContext,
     };
     requestSummary = createRequestSummary(request);
+
+    externalAiEvaluation = await evaluateExternalAiPolicy(tool, actionType, governanceContext);
+    if (externalAiEvaluation && externalAiEvaluation.decision.decision === 'blocked') {
+      if (governanceContext) {
+        await persistAiQueryLog({
+          governanceContext,
+          requestBody: request.body,
+          responseText: externalAiEvaluation.decision.reason,
+          providerId: externalAiEvaluation.providerId,
+          policyDecision: 'blocked',
+          externalAiUsed: false,
+          citationCount: 0,
+          confidenceScore: null,
+          corpusCoveragePct: null,
+          newestSourceDate: null,
+          reviewRequired: true,
+          reviewReasons: [externalAiEvaluation.decision.code],
+        });
+      }
+
+      throw new AppError(
+        externalAiEvaluation.decision.code,
+        externalAiEvaluation.decision.reason,
+        externalAiEvaluation.decision.metadata,
+      );
+    }
 
     yield {
       type: 'status',
@@ -653,6 +934,7 @@ export const executeToolWithPipelineStream = async function* ({
             actionType,
             signal: attemptController.signal,
             timeoutMs: resolvedTimeoutMs,
+            governanceContext,
           })[Symbol.asyncIterator]();
 
           while (true) {
@@ -681,6 +963,7 @@ export const executeToolWithPipelineStream = async function* ({
             actionType,
             signal: attemptController.signal,
             timeoutMs: resolvedTimeoutMs,
+            governanceContext,
           });
         }
 
@@ -702,7 +985,67 @@ export const executeToolWithPipelineStream = async function* ({
           message: 'Normalizing execution response.',
         };
 
+        let aiPolicyResult: ReturnType<typeof validateAiResponseContract> | null = null;
+        if (tool.type === 'openai_compatible' && actionType === 'run') {
+          if (!governanceContext) {
+            throw new AppError(
+              'EXTERNAL_AI_CONTEXT_REQUIRED',
+              'External AI execution requires governance context (workspaceId, projectId, actorId, sensitivityLevel).',
+            );
+          }
+
+          try {
+            aiPolicyResult = validateAiResponseContract(rawResponse.body, governanceContext.sensitivityLevel);
+          } catch (error) {
+            if (externalAiEvaluation) {
+              await persistAiQueryLog({
+                governanceContext,
+                requestBody: request.body,
+                responseText: rawResponse.body,
+                providerId: externalAiEvaluation.providerId,
+                policyDecision: 'blocked',
+                externalAiUsed: true,
+                citationCount: 0,
+                confidenceScore: null,
+                corpusCoveragePct: null,
+                newestSourceDate: null,
+                reviewRequired: true,
+                reviewReasons: [error instanceof AppError ? error.code : 'AI_POLICY_CONTRACT_VIOLATION'],
+              });
+            }
+            throw error;
+          }
+        }
+
         const normalized = adapter.normalizeResponse(rawResponse, request);
+        if (aiPolicyResult) {
+          normalized.headers = {
+            ...normalized.headers,
+            'x-korda-review-required': aiPolicyResult.reviewRequired ? 'true' : 'false',
+            'x-korda-review-reasons': aiPolicyResult.reviewReasons.join(','),
+          };
+          if (aiPolicyResult.reviewRequired && aiPolicyResult.reviewReasons.length > 0) {
+            normalized.bodyPreview = `${normalized.bodyPreview}\n[Review required: ${aiPolicyResult.reviewReasons.join(', ')}]`;
+          }
+        }
+
+        if (governanceContext && externalAiEvaluation && aiPolicyResult) {
+          await persistAiQueryLog({
+            governanceContext,
+            requestBody: request.body,
+            responseText: rawResponse.body,
+            providerId: externalAiEvaluation.providerId,
+            policyDecision: externalAiEvaluation.decision.decision,
+            externalAiUsed: true,
+            citationCount: aiPolicyResult.contract.citations.length,
+            confidenceScore: aiPolicyResult.contract.confidenceScore,
+            corpusCoveragePct: aiPolicyResult.contract.corpusCoveragePct,
+            newestSourceDate: aiPolicyResult.contract.newestSourceDate,
+            reviewRequired: aiPolicyResult.reviewRequired,
+            reviewReasons: aiPolicyResult.reviewReasons,
+          });
+        }
+
         const durationMs = Math.round(now() - start);
         const result: ExecutionResult = {
           ok: true,

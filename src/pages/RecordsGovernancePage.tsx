@@ -6,6 +6,9 @@ import type {
   DeliverableSummary,
   DeliverableVersionSummary,
   GovernanceScope,
+  PolicyOverrideSummary,
+  ProjectRole,
+  ProjectRoleBindingSummary,
   SensitivityLevel,
 } from '../features/records/RecordsGovernanceService';
 import { recordsGovernanceService } from '../features/records/service';
@@ -33,6 +36,7 @@ const artifactTypeOptions = [
 const statusOptions = ['Draft', 'Issued', 'IFC', 'IFP', 'Superseded', 'AsBuilt'] as const;
 const disciplineOptions = ['General', 'Electrical', 'Mechanical', 'FP', 'Architectural', 'Structural'] as const;
 const sensitivityOptions: SensitivityLevel[] = ['Public', 'Internal', 'Confidential', 'Client-Confidential'];
+const projectRoleOptions: ProjectRole[] = ['project_owner', 'records_publisher', 'records_viewer', 'ai_operator'];
 
 type VersionDraft = {
   artifactId: string;
@@ -51,7 +55,16 @@ export function RecordsGovernancePage() {
   const [deliverables, setDeliverables] = useState<DeliverableSummary[]>([]);
   const [deliverableVersions, setDeliverableVersions] = useState<Record<string, DeliverableVersionSummary[]>>({});
   const [auditEvents, setAuditEvents] = useState<AuditRecord[]>([]);
+  const [projectRoles, setProjectRoles] = useState<ProjectRoleBindingSummary[]>([]);
+  const [policyOverrides, setPolicyOverrides] = useState<PolicyOverrideSummary[]>([]);
   const [versionDrafts, setVersionDrafts] = useState<Record<string, VersionDraft>>({});
+  const [grantRoleActorId, setGrantRoleActorId] = useState(defaultScope.actorId);
+  const [grantRoleValue, setGrantRoleValue] = useState<ProjectRole>('records_publisher');
+  const [overrideActorId, setOverrideActorId] = useState(defaultScope.actorId);
+  const [overrideProviderId, setOverrideProviderId] = useState('api.openai.com');
+  const [overrideSensitivity, setOverrideSensitivity] = useState<SensitivityLevel>('Internal');
+  const [overrideReason, setOverrideReason] = useState('Approved project-specific external AI usage.');
+  const [overrideExpiresAtLocal, setOverrideExpiresAtLocal] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [busyAction, setBusyAction] = useState('');
@@ -64,10 +77,12 @@ export function RecordsGovernancePage() {
     setError('');
 
     try {
-      const [nextArtifacts, nextDeliverables, nextAudit] = await Promise.all([
+      const [nextArtifacts, nextDeliverables, nextAudit, nextRoles, nextOverrides] = await Promise.all([
         recordsGovernanceService.listArtifacts(scope),
         recordsGovernanceService.listDeliverables(scope),
         recordsGovernanceService.listAuditEvents(scope, 20),
+        recordsGovernanceService.listProjectRoleBindings(scope),
+        recordsGovernanceService.listPolicyOverrides(scope),
       ]);
 
       const versionEntries = await Promise.all(
@@ -80,6 +95,8 @@ export function RecordsGovernancePage() {
       setArtifacts(nextArtifacts);
       setDeliverables(nextDeliverables);
       setAuditEvents(nextAudit);
+      setProjectRoles(nextRoles);
+      setPolicyOverrides(nextOverrides);
       setDeliverableVersions(Object.fromEntries(versionEntries));
 
       setVersionDrafts((current) => {
@@ -240,6 +257,68 @@ export function RecordsGovernancePage() {
     }
   };
 
+  const grantProjectRole = async (): Promise<void> => {
+    const actorId = grantRoleActorId.trim();
+    if (!actorId) {
+      setError('Actor ID is required for role grants.');
+      return;
+    }
+
+    setBusyAction('grant-role');
+    setMessage('');
+    setError('');
+
+    try {
+      await recordsGovernanceService.grantProjectRole(scope, actorId, grantRoleValue);
+      setMessage(`Granted ${grantRoleValue} to ${actorId} in ${scope.projectId}.`);
+      await refresh();
+    } catch (grantError) {
+      setError(toAppErrorMessage(grantError));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const grantOverride = async (): Promise<void> => {
+    const actorId = overrideActorId.trim();
+    const providerId = overrideProviderId.trim().toLowerCase();
+    const reason = overrideReason.trim();
+
+    if (!actorId) {
+      setError('Actor ID is required for override grants.');
+      return;
+    }
+    if (!providerId) {
+      setError('Provider ID is required for override grants.');
+      return;
+    }
+    if (!reason) {
+      setError('Override reason is required.');
+      return;
+    }
+
+    setBusyAction('grant-override');
+    setMessage('');
+    setError('');
+
+    try {
+      const overrideId = await recordsGovernanceService.grantExternalAiOverride({
+        scope,
+        actorId,
+        providerId,
+        sensitivityLevel: overrideSensitivity,
+        reason,
+        expiresAtUtc: overrideExpiresAtLocal ? new Date(overrideExpiresAtLocal).toISOString() : null,
+      });
+      setMessage(`Granted external-AI override ${overrideId} for ${actorId} (${providerId}).`);
+      await refresh();
+    } catch (overrideError) {
+      setError(toAppErrorMessage(overrideError));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
   return (
     <div className="space-y-5">
       <section className="rounded-lg border border-slate-200 bg-white p-5">
@@ -374,6 +453,155 @@ export function RecordsGovernancePage() {
 
         {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
         {error ? <p className="mt-2 text-sm text-rose-700">{error}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <h3 className="text-base font-semibold text-slate-900">Policy Administration</h3>
+        <p className="mt-1 text-xs text-slate-600">
+          Grant project roles and external AI overrides from the governed service path only.
+        </p>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <article className="rounded border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Grant Project Role</h4>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Actor ID</span>
+                <input
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setGrantRoleActorId(event.target.value)}
+                  value={grantRoleActorId}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Role</span>
+                <select
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setGrantRoleValue(event.target.value as ProjectRole)}
+                  value={grantRoleValue}
+                >
+                  {projectRoleOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                className="rounded bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                disabled={busyAction === 'grant-role'}
+                onClick={() => {
+                  void grantProjectRole();
+                }}
+                type="button"
+              >
+                {busyAction === 'grant-role' ? 'Granting...' : 'Grant Role'}
+              </button>
+            </div>
+          </article>
+
+          <article className="rounded border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Grant External AI Override</h4>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Actor ID</span>
+                <input
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setOverrideActorId(event.target.value)}
+                  value={overrideActorId}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Provider ID</span>
+                <input
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setOverrideProviderId(event.target.value)}
+                  value={overrideProviderId}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Sensitivity</span>
+                <select
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setOverrideSensitivity(event.target.value as SensitivityLevel)}
+                  value={overrideSensitivity}
+                >
+                  {sensitivityOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Expires At (optional)</span>
+                <input
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  onChange={(event) => setOverrideExpiresAtLocal(event.target.value)}
+                  type="datetime-local"
+                  value={overrideExpiresAtLocal}
+                />
+              </label>
+            </div>
+            <label className="mt-2 block space-y-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Reason</span>
+              <textarea
+                className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                onChange={(event) => setOverrideReason(event.target.value)}
+                rows={2}
+                value={overrideReason}
+              />
+            </label>
+            <div className="mt-3 flex justify-end">
+              <button
+                className="rounded bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                disabled={busyAction === 'grant-override'}
+                onClick={() => {
+                  void grantOverride();
+                }}
+                type="button"
+              >
+                {busyAction === 'grant-override' ? 'Granting...' : 'Grant Override'}
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <article className="rounded border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Project Role Bindings</h4>
+            {projectRoles.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-600">No role bindings yet.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                {projectRoles.map((row) => (
+                  <li className="rounded border border-slate-200 bg-slate-50 px-2 py-1" key={`${row.projectId}:${row.actorId}:${row.role}`}>
+                    {row.actorId} | {row.role} | granted by {row.grantedBy} | {new Date(row.grantedAtUtc).toLocaleString()}
+                    {row.revokedAtUtc ? ` | revoked ${new Date(row.revokedAtUtc).toLocaleString()}` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+
+          <article className="rounded border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">External AI Overrides</h4>
+            {policyOverrides.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-600">No overrides yet.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                {policyOverrides.map((row) => (
+                  <li className="rounded border border-slate-200 bg-slate-50 px-2 py-1" key={row.id}>
+                    {row.actorId} | {row.providerId} | {row.sensitivityLevel} | approved by {row.approvedBy}
+                    {row.expiresAtUtc ? ` | expires ${new Date(row.expiresAtUtc).toLocaleString()}` : ' | no expiry'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+        </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5">

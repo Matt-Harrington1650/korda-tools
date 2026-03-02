@@ -91,5 +91,5 @@ export class LocalObjectStoreAdapter implements ObjectStore {
   }
 }
 
-// TODO: Add Tauri-command-backed bridge implementation (invoke backend for file I/O).
-// TODO: Add optional cloud-backed adapter implementing ObjectStore for replication tier.
+// Tauri-backed bridge is provided by createObjectStoreFsBridge().
+// Cloud replication should be implemented as a separate ObjectStore adapter without changing this contract.

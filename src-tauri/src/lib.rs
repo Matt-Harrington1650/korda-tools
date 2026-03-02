@@ -1,3 +1,4 @@
+mod execution_gateway;
 mod help;
 mod object_store;
 mod secrets;
@@ -115,6 +116,18 @@ fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: include_str!("../migrations/0018_create_sheet_knowledge_tables.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 19,
+            description: "create_policy_controls",
+            sql: include_str!("../migrations/0019_create_policy_controls.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 20,
+            description: "add_ai_review_fields",
+            sql: include_str!("../migrations/0020_add_ai_review_fields.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -129,6 +142,7 @@ pub fn run() {
             object_store::object_store_mkdirp,
             object_store::object_store_write_file_atomic,
             object_store::object_store_read_file,
+            execution_gateway::execution_gateway_http_request,
             tools::commands::tools_list,
             tools::commands::tool_get,
             tools::commands::tool_create,
@@ -170,7 +184,11 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::sql_migrations;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use sqlx::{Executor, Row};
     use std::collections::HashSet;
+    use std::path::Path;
+    use uuid::Uuid;
 
     #[test]
     fn migrations_are_strictly_increasing() {
@@ -220,12 +238,136 @@ mod tests {
             .map(|migration| migration.version)
             .collect();
 
-        for expected in [15, 16, 17, 18] {
+        for expected in [15, 16, 17, 18, 19, 20] {
             assert!(
                 versions.contains(&expected),
                 "expected governance migration version {} to be present",
                 expected
             );
         }
+    }
+
+    #[test]
+    fn runtime_migration_apply_is_idempotent() {
+        tauri::async_runtime::block_on(async {
+            let db_path = temp_db_path("idempotent");
+            let pool = open_test_pool(&db_path).await;
+
+            apply_migration_chain(&pool, &sql_migrations())
+                .await
+                .expect("first migration apply should succeed");
+            let first_versions = read_applied_versions(&pool).await;
+
+            apply_migration_chain(&pool, &sql_migrations())
+                .await
+                .expect("second migration apply should be a no-op");
+            let second_versions = read_applied_versions(&pool).await;
+
+            assert_eq!(
+                first_versions, second_versions,
+                "re-applying migration chain must not change applied versions"
+            );
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&db_path);
+        });
+    }
+
+    #[test]
+    fn failing_migration_is_not_marked_applied() {
+        tauri::async_runtime::block_on(async {
+            let db_path = temp_db_path("failure-safe");
+            let pool = open_test_pool(&db_path).await;
+
+            let failing_chain = vec![
+                tauri_plugin_sql::Migration {
+                    version: 1,
+                    description: "ok",
+                    sql: "CREATE TABLE IF NOT EXISTS ok_table (id INTEGER PRIMARY KEY);",
+                    kind: tauri_plugin_sql::MigrationKind::Up,
+                },
+                tauri_plugin_sql::Migration {
+                    version: 2,
+                    description: "broken",
+                    sql: "CREAT TABLE broken_table (id INTEGER PRIMARY KEY);",
+                    kind: tauri_plugin_sql::MigrationKind::Up,
+                },
+            ];
+
+            let apply_result = apply_migration_chain(&pool, &failing_chain).await;
+            assert!(apply_result.is_err(), "failing chain must return error");
+
+            let versions = read_applied_versions(&pool).await;
+            assert_eq!(
+                versions,
+                vec![1],
+                "failed migration must not be marked as applied"
+            );
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&db_path);
+        });
+    }
+
+    async fn open_test_pool(db_path: &Path) -> sqlx::SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true);
+
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("failed to open sqlite pool")
+    }
+
+    async fn apply_migration_chain(
+        pool: &sqlx::SqlitePool,
+        migrations: &[tauri_plugin_sql::Migration],
+    ) -> Result<(), sqlx::Error> {
+        pool.execute(
+            "CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)",
+        )
+        .await?;
+
+        for migration in migrations {
+            let already_applied =
+                sqlx::query("SELECT version FROM migrations WHERE version = ? LIMIT 1")
+                    .bind(migration.version)
+                    .fetch_optional(pool)
+                    .await?
+                    .is_some();
+            if already_applied {
+                continue;
+            }
+
+            let mut transaction = pool.begin().await?;
+            sqlx::raw_sql(migration.sql)
+                .execute(transaction.as_mut())
+                .await?;
+            sqlx::query(
+                "INSERT INTO migrations (version, applied_at) VALUES (?, strftime('%s','now'))",
+            )
+            .bind(migration.version)
+            .execute(transaction.as_mut())
+            .await?;
+            transaction.commit().await?;
+        }
+
+        Ok(())
+    }
+
+    async fn read_applied_versions(pool: &sqlx::SqlitePool) -> Vec<i64> {
+        sqlx::query("SELECT version FROM migrations ORDER BY version ASC")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|row| row.get::<i64, _>("version"))
+            .collect()
+    }
+
+    fn temp_db_path(prefix: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("korda-migration-{}-{}.db", prefix, Uuid::new_v4()))
     }
 }

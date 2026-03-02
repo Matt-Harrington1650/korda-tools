@@ -3,7 +3,12 @@ import { createFileService, type RunAttachment } from '../../../desktop';
 import type { ToolRunRequestSummary } from '../../../domain/log';
 import type { Tool } from '../../../domain/tool';
 import { executeToolWithPipelineStream } from '../../../execution';
-import type { ExecutionActionType, ExecutionEvent, ExecutionResult } from '../../../execution';
+import type {
+  ExecutionActionType,
+  ExecutionEvent,
+  ExecutionGovernanceContext,
+  ExecutionResult,
+} from '../../../execution';
 import { previewText } from '../../../execution/helpers';
 import { redactHeaders, redactText } from '../logRedaction';
 import { useSettingsStore } from '../../settings/store';
@@ -80,7 +85,10 @@ const buildFallbackResult = (tool: Tool, actionType: ExecutionActionType, durati
   };
 };
 
-export const useToolExecution = (tool: Tool | undefined) => {
+export const useToolExecution = (
+  tool: Tool | undefined,
+  governanceContext: ExecutionGovernanceContext | null = null,
+) => {
   const fileService = useMemo(() => createFileService(), []);
   const defaultTimeoutMs = useSettingsStore((state) => state.settings.defaultTimeoutMs);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -271,6 +279,7 @@ export const useToolExecution = (tool: Tool | undefined) => {
         signal: controller.signal,
         stream: actionType === 'run',
         attachments: actionType === 'run' ? attachments : [],
+        governanceContext,
       });
 
       for await (const event of stream) {

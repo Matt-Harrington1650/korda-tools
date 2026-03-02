@@ -1,9 +1,9 @@
-# Placeholder CODEOWNERS for solo -> small team transition.
-# Replace @REPO_OWNER with actual GitHub handle/team before external contribution.
+# Initial CODEOWNERS for solo -> small team transition.
+# Replace with team aliases as ownership expands.
 
-* @REPO_OWNER
+* @Matt-Harrington1650
 
-/.github/ @REPO_OWNER
-/docs/ @REPO_OWNER
-/src/ @REPO_OWNER
-/src-tauri/ @REPO_OWNER
+/.github/ @Matt-Harrington1650
+/docs/ @Matt-Harrington1650
+/src/ @Matt-Harrington1650
+/src-tauri/ @Matt-Harrington1650

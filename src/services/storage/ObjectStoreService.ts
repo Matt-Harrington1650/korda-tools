@@ -1,5 +1,6 @@
 import { AppError, isAppError } from '../../lib/errors';
 import { fileIngest } from '../ingestion/fileIngest';
+import type { PolicyEnforcer } from '../policy/PolicyEnforcer';
 import type {
   ObjectMetadataRecord,
   ObjectStore,
@@ -24,6 +25,10 @@ export interface ObjectAuditAppender {
   ): Promise<void>;
 }
 
+export interface ObjectStoreMutationRunner {
+  run<T>(action: () => Promise<T>): Promise<T>;
+}
+
 export interface ObjectStoreServicePutInput {
   context: ProjectContext;
   bytes: Uint8Array;
@@ -40,20 +45,40 @@ export class ObjectStoreService {
   private readonly objectStore: ObjectStore;
   private readonly metadataWriter: ObjectMetadataWriter;
   private readonly auditAppender: ObjectAuditAppender;
+  private readonly policyEnforcer: PolicyEnforcer;
+  private readonly mutationRunner: ObjectStoreMutationRunner;
 
   constructor(
     objectStore: ObjectStore,
     metadataWriter: ObjectMetadataWriter,
     auditAppender: ObjectAuditAppender,
+    policyEnforcer: PolicyEnforcer,
+    mutationRunner?: ObjectStoreMutationRunner,
   ) {
     this.objectStore = objectStore;
     this.metadataWriter = metadataWriter;
     this.auditAppender = auditAppender;
+    this.policyEnforcer = policyEnforcer;
+    this.mutationRunner = mutationRunner ?? {
+      run: async <T>(action: () => Promise<T>): Promise<T> => action(),
+    };
   }
 
   async put(input: ObjectStoreServicePutInput): Promise<ObjectStorePutResult> {
     try {
       validatePutInput(input);
+      const decision = await this.policyEnforcer.authorizeObjectIngest({
+        scope: input.context,
+        artifactType: input.artifactType,
+        status: input.status,
+        sensitivityLevel: input.sensitivityLevel,
+      });
+      if (decision.decision !== 'allowed') {
+        throw new AppError(decision.code, decision.reason, {
+          policyDecision: decision.decision,
+          metadata: decision.metadata,
+        });
+      }
 
       const ingested = await fileIngest({
         bytes: input.bytes,
@@ -70,27 +95,29 @@ export class ObjectStoreService {
         originalName: ingested.originalName,
       });
 
-      await this.metadataWriter.writeObjectMetadata(input.context, {
-        objectHash: stored.hash,
-        objectKey: stored.objectKey,
-        sizeBytes: stored.sizeBytes,
-        mimeType: ingested.mime,
-        originalName: ingested.originalName,
-        artifactType: input.artifactType,
-        discipline: input.discipline,
-        status: input.status,
-        sensitivityLevel: input.sensitivityLevel,
-        projectId: input.context.projectId,
-        createdBy: input.context.actorId,
-        createdAtUtc: stored.committedAtUtc,
-      });
+      await this.mutationRunner.run(async () => {
+        await this.metadataWriter.writeObjectMetadata(input.context, {
+          objectHash: stored.hash,
+          objectKey: stored.objectKey,
+          sizeBytes: stored.sizeBytes,
+          mimeType: ingested.mime,
+          originalName: ingested.originalName,
+          artifactType: input.artifactType,
+          discipline: input.discipline,
+          status: input.status,
+          sensitivityLevel: input.sensitivityLevel,
+          projectId: input.context.projectId,
+          createdBy: input.context.actorId,
+          createdAtUtc: stored.committedAtUtc,
+        });
 
-      await this.auditAppender.appendObjectWrite(input.context, {
-        objectHash: stored.hash,
-        objectKey: stored.objectKey,
-        sizeBytes: stored.sizeBytes,
-        mimeType: ingested.mime,
-        originalName: ingested.originalName,
+        await this.auditAppender.appendObjectWrite(input.context, {
+          objectHash: stored.hash,
+          objectKey: stored.objectKey,
+          sizeBytes: stored.sizeBytes,
+          mimeType: ingested.mime,
+          originalName: ingested.originalName,
+        });
       });
 
       return stored;
@@ -103,9 +130,6 @@ export class ObjectStoreService {
     }
   }
 }
-
-// TODO: Wrap metadata + audit append in a transactional unit where supported.
-// TODO: Add policy enforcer dependency for project boundary and external egress checks.
 
 const FORBIDDEN_NAME_PATTERNS = ['final_final', 'latest_latest', 'vfinal', 'newnew'];
 

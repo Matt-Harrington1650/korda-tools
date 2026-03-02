@@ -1,5 +1,7 @@
 import { AppError, isAppError } from '../../lib/errors';
 import { sha256 } from '../crypto/sha256';
+import type { PolicyEnforcer } from '../policy/PolicyEnforcer';
+import type { GovernanceScope, SensitivityLevel } from '../policy/types';
 
 interface ArtifactRecord {
   id: string;
@@ -7,6 +9,7 @@ interface ArtifactRecord {
   sha256: string;
   objectKey: string;
   artifactType: string;
+  sensitivityLevel: SensitivityLevel;
   immutable: boolean;
 }
 
@@ -27,7 +30,7 @@ interface DeliverableVersionRecord {
 }
 
 interface ArtifactRepository {
-  getById(artifactId: string): Promise<ArtifactRecord | null>;
+  getByIdForProject(projectId: string, artifactId: string): Promise<ArtifactRecord | null>;
 }
 
 interface DeliverableRepository {
@@ -37,7 +40,7 @@ interface DeliverableRepository {
     createdBy: string;
     createdAtUtc: string;
   }): Promise<DeliverableRecord>;
-  getById(deliverableId: string): Promise<DeliverableRecord | null>;
+  getByIdForProject(projectId: string, deliverableId: string): Promise<DeliverableRecord | null>;
   updateCurrentVersionNo(deliverableId: string, versionNo: number, updatedAtUtc: string): Promise<void>;
   getCurrentVersion(deliverableId: string): Promise<DeliverableVersionRecord | null>;
   insertVersion(input: {
@@ -96,6 +99,7 @@ export class DeliverableService {
   private readonly blobReader: ArtifactBlobReader;
   private readonly audit: DeliverableAuditAppender;
   private readonly tx: TransactionRunner;
+  private readonly policyEnforcer: PolicyEnforcer;
 
   constructor(
     artifacts: ArtifactRepository,
@@ -103,23 +107,31 @@ export class DeliverableService {
     blobReader: ArtifactBlobReader,
     audit: DeliverableAuditAppender,
     tx: TransactionRunner,
+    policyEnforcer: PolicyEnforcer,
   ) {
     this.artifacts = artifacts;
     this.deliverables = deliverables;
     this.blobReader = blobReader;
     this.audit = audit;
     this.tx = tx;
+    this.policyEnforcer = policyEnforcer;
   }
 
   async finalizeDeliverable(
+    scope: GovernanceScope,
     artifactId: string,
-    actorId: string,
     reason: string,
   ): Promise<FinalizeDeliverableResult> {
     assertNonEmpty(reason, 'FINALIZE_REASON_REQUIRED');
 
-    const artifact = await this.requireArtifact(artifactId);
-    const integrity = await this.verifyArtifactIntegrity(artifactId);
+    const artifact = await this.requireArtifact(scope, artifactId);
+    await this.assertPolicyDecision(
+      await this.policyEnforcer.authorizeDeliverableFinalize({
+        scope,
+        artifact: toPolicyArtifact(artifact),
+      }),
+    );
+    const integrity = await this.computeArtifactIntegrity(artifact);
     if (!integrity.valid) {
       throw new AppError('ARTIFACT_HASH_MISMATCH', 'Artifact integrity check failed during finalization.', {
         artifactId,
@@ -136,7 +148,7 @@ export class DeliverableService {
       await this.deliverables.createDeliverable({
         deliverableId,
         projectId: artifact.projectId,
-        createdBy: actorId,
+        createdBy: scope.actorId,
         createdAtUtc: now,
       });
 
@@ -148,12 +160,12 @@ export class DeliverableService {
         artifactHash: artifact.sha256,
         parentVersionId: null,
         reason,
-        createdBy: actorId,
+        createdBy: scope.actorId,
         createdAtUtc: now,
       });
 
       await this.audit.append({
-        actorId,
+        actorId: scope.actorId,
         action: 'deliverable.finalized',
         projectId: artifact.projectId,
         deliverableId,
@@ -174,28 +186,26 @@ export class DeliverableService {
     };
   }
 
-  async verifyArtifactIntegrity(artifactId: string): Promise<ArtifactIntegrityResult> {
-    const artifact = await this.requireArtifact(artifactId);
-    const bytes = await this.blobReader.getReadonlyByHash(artifact.projectId, artifact.sha256);
-    const computedHash = await sha256(bytes);
-
-    return {
-      artifactId: artifact.id,
-      expectedHash: artifact.sha256,
-      computedHash,
-      valid: computedHash === artifact.sha256,
-    };
+  async verifyArtifactIntegrity(scope: GovernanceScope, artifactId: string): Promise<ArtifactIntegrityResult> {
+    const artifact = await this.requireArtifact(scope, artifactId);
+    await this.assertPolicyDecision(
+      await this.policyEnforcer.authorizeIntegrityCheck({
+        scope,
+        artifact: toPolicyArtifact(artifact),
+      }),
+    );
+    return this.computeArtifactIntegrity(artifact);
   }
 
   async createNewVersion(
+    scope: GovernanceScope,
     deliverableId: string,
     newArtifactId: string,
-    actorId: string,
     reason: string,
   ): Promise<FinalizeDeliverableResult> {
     assertNonEmpty(reason, 'NEW_VERSION_REASON_REQUIRED');
 
-    const deliverable = await this.requireDeliverable(deliverableId);
+    const deliverable = await this.requireDeliverable(scope, deliverableId);
     const currentVersion = await this.deliverables.getCurrentVersion(deliverableId);
     if (!currentVersion) {
       throw new AppError('DELIVERABLE_CURRENT_VERSION_MISSING', 'Deliverable has no current version.', {
@@ -203,15 +213,28 @@ export class DeliverableService {
       });
     }
 
-    const artifact = await this.requireArtifact(newArtifactId);
+    const artifact = await this.requireArtifact(scope, newArtifactId);
     if (artifact.projectId !== deliverable.projectId) {
-      throw new AppError('DELIVERABLE_PROJECT_MISMATCH', 'Artifact project does not match deliverable project.', {
+      throw new AppError('DELIVERABLE_SCOPE_MISMATCH', 'Artifact scope does not match deliverable scope.', {
         deliverableId,
         artifactId: newArtifactId,
+        scopeProjectId: scope.projectId,
       });
     }
 
-    const integrity = await this.verifyArtifactIntegrity(newArtifactId);
+    await this.assertPolicyDecision(
+      await this.policyEnforcer.authorizeDeliverableVersion({
+        scope,
+        deliverable: {
+          id: deliverable.id,
+          projectId: deliverable.projectId,
+          status: deliverable.status,
+        },
+        artifact: toPolicyArtifact(artifact),
+      }),
+    );
+
+    const integrity = await this.computeArtifactIntegrity(artifact);
     if (!integrity.valid) {
       throw new AppError('ARTIFACT_HASH_MISMATCH', 'Artifact integrity check failed for new version.', {
         artifactId: newArtifactId,
@@ -242,14 +265,14 @@ export class DeliverableService {
         artifactHash: artifact.sha256,
         parentVersionId: currentVersion.id,
         reason,
-        createdBy: actorId,
+        createdBy: scope.actorId,
         createdAtUtc: now,
       });
 
       await this.deliverables.updateCurrentVersionNo(deliverableId, nextVersionNo, now);
 
       await this.audit.append({
-        actorId,
+        actorId: scope.actorId,
         action: 'deliverable.version.created',
         projectId: artifact.projectId,
         deliverableId,
@@ -270,11 +293,28 @@ export class DeliverableService {
     };
   }
 
-  private async requireArtifact(artifactId: string): Promise<ArtifactRecord> {
+  private async computeArtifactIntegrity(artifact: ArtifactRecord): Promise<ArtifactIntegrityResult> {
+    const bytes = await this.blobReader.getReadonlyByHash(artifact.projectId, artifact.sha256);
+    const computedHash = await sha256(bytes);
+
+    return {
+      artifactId: artifact.id,
+      expectedHash: artifact.sha256,
+      computedHash,
+      valid: computedHash === artifact.sha256,
+    };
+  }
+
+  private async requireArtifact(scope: GovernanceScope, artifactId: string): Promise<ArtifactRecord> {
     try {
-      const artifact = await this.artifacts.getById(artifactId);
+      assertScope(scope);
+
+      const artifact = await this.artifacts.getByIdForProject(scope.projectId, artifactId);
       if (!artifact) {
-        throw new AppError('ARTIFACT_NOT_FOUND', 'Artifact was not found.', { artifactId });
+        throw new AppError('PROJECT_SCOPE_VIOLATION', 'Artifact is not visible in the active project scope.', {
+          artifactId,
+          scopeProjectId: scope.projectId,
+        });
       }
       if (!artifact.immutable) {
         throw new AppError('ARTIFACT_NOT_IMMUTABLE', 'Only immutable artifacts can back deliverables.', {
@@ -298,13 +338,28 @@ export class DeliverableService {
     }
   }
 
-  private async requireDeliverable(deliverableId: string): Promise<DeliverableRecord> {
-    const record = await this.deliverables.getById(deliverableId);
+  private async requireDeliverable(scope: GovernanceScope, deliverableId: string): Promise<DeliverableRecord> {
+    assertScope(scope);
+    const record = await this.deliverables.getByIdForProject(scope.projectId, deliverableId);
     if (!record) {
-      throw new AppError('DELIVERABLE_NOT_FOUND', 'Deliverable was not found.', { deliverableId });
+      throw new AppError('DELIVERABLE_SCOPE_MISMATCH', 'Deliverable is not visible in the active project scope.', {
+        deliverableId,
+        scopeProjectId: scope.projectId,
+      });
     }
 
     return record;
+  }
+
+  private async assertPolicyDecision(decision: {
+    decision: 'allowed' | 'blocked' | 'override';
+    code: string;
+    reason: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    if (decision.decision === 'blocked') {
+      throw new AppError(decision.code, decision.reason, decision.metadata);
+    }
   }
 }
 
@@ -323,4 +378,23 @@ function createId(prefix: string): string {
 }
 
 // TODO: Wire concrete repository + audit adapters to SQLite write path.
-// TODO: Enforce role-based policy checks before finalize/version creation.
+
+function assertScope(scope: GovernanceScope): void {
+  if (!scope.workspaceId.trim() || !scope.projectId.trim() || !scope.actorId.trim()) {
+    throw new AppError('SCOPE_REQUIRED', 'workspaceId, projectId, and actorId are required.');
+  }
+}
+
+function toPolicyArtifact(artifact: ArtifactRecord): {
+  id: string;
+  projectId: string;
+  artifactType: string;
+  sensitivityLevel: SensitivityLevel;
+} {
+  return {
+    id: artifact.id,
+    projectId: artifact.projectId,
+    artifactType: artifact.artifactType,
+    sensitivityLevel: artifact.sensitivityLevel,
+  };
+}

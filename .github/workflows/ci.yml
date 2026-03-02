@@ -37,10 +37,37 @@ jobs:
             exit 1
           fi
 
+      - name: Policy Scan - Governed Adapters Use Backend Gateway
+        shell: bash
+        run: |
+          if rg -n "fetch\(" src/execution/adapters src/execution/helpers.ts; then
+            echo "Direct frontend network egress detected in governed execution path."
+            exit 1
+          fi
+
       - name: Migration Chain Sanity
         shell: bash
         run: |
-          rg -n "0015_create_governance_core.sql|0016_create_deliverables.sql|0017_harden_audit_chain.sql|0018_create_sheet_knowledge_tables.sql" src-tauri/src/lib.rs
+          rg -n "0015_create_governance_core.sql|0016_create_deliverables.sql|0017_harden_audit_chain.sql|0018_create_sheet_knowledge_tables.sql|0019_create_policy_controls.sql|0020_add_ai_review_fields.sql" src-tauri/src/lib.rs
+
+      - name: Migration Authority Guard (Tauri Only)
+        shell: bash
+        run: |
+          if rg -n "runMigrationsOnStartup|services/db/migrate" src src-tauri --glob '!src/services/db/migrate.ts' --glob '!src/services/db/sqlite.ts'; then
+            echo "Non-authoritative TS migration runner reference detected outside experimental files."
+            exit 1
+          fi
+
+      - name: Release Governance Consistency
+        shell: bash
+        run: |
+          rg -n "^version\"\\s*:\\s*\"[0-9]+\\.[0-9]+\\.[0-9]+\"" package.json
+          rg -n "^## \\[Unreleased\\]" CHANGELOG.md
+          rg -n "^\\s*tagName:\\s*v__VERSION__$" .github/workflows/release-windows.yml
+          if rg -n "@REPO_OWNER" CODEOWNERS; then
+            echo "CODEOWNERS placeholder detected."
+            exit 1
+          fi
 
       - name: Governance Docs Presence
         shell: bash

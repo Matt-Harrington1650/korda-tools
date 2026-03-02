@@ -1,4 +1,5 @@
 import type { Tool } from '../domain/tool';
+import { governedExecutionGateway } from '../services/execution/GovernedExecutionGateway';
 import type { ExecutionRequest, RawExecutionResponse } from './types';
 
 const PREVIEW_LENGTH = 800;
@@ -25,35 +26,7 @@ export const executeHttpRequest = async (
   request: ExecutionRequest,
   signal: AbortSignal,
 ): Promise<RawExecutionResponse> => {
-  if (request.url.startsWith('mock://')) {
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 120);
-    });
-
-    return {
-      statusCode: 200,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ok: true, source: request.url, method: request.method }),
-    };
-  }
-
-  const response = await fetch(request.url, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body ?? undefined,
-    signal,
-  });
-
-  const headers: Record<string, string> = {};
-  response.headers.forEach((value, key) => {
-    headers[key] = value;
-  });
-
-  return {
-    statusCode: response.status,
-    headers,
-    body: await response.text(),
-  };
+  return governedExecutionGateway.execute(request, signal);
 };
 
 export const createRequestSummary = (request: ExecutionRequest): string => {

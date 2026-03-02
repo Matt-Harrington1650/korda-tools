@@ -18,9 +18,6 @@ export async function openSqlite(options: OpenSqliteOptions): Promise<SqliteConn
 
   throw new AppError(
     'SQLITE_OPEN_NOT_IMPLEMENTED',
-    'openSqlite is an integration hook. Wire this to Tauri backend commands or a SQLite bridge adapter.',
+    'openSqlite is an experimental integration hook and not part of authoritative runtime migrations.',
   );
 }
-
-// TODO: Implement Tauri-backed connection via invoke commands.
-// TODO: Apply runtime connection pragmas: foreign_keys=ON, synchronous=NORMAL, wal_autocheckpoint=1000.

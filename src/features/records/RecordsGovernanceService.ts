@@ -7,6 +7,13 @@ import {
   type ArtifactIntegrityResult,
   type FinalizeDeliverableResult,
 } from '../../services/deliverables/DeliverableService';
+import { FailClosedPolicyEnforcer } from '../../services/policy/FailClosedPolicyEnforcer';
+import type {
+  GovernanceScope,
+  PolicyRepository,
+  ProjectRole,
+  SensitivityLevel,
+} from '../../services/policy/types';
 import { LocalObjectStoreAdapter } from '../../services/storage/LocalObjectStoreAdapter';
 import { DefaultObjectStorePathResolver } from '../../services/storage/ObjectStorePathResolver';
 import type { ObjectStore, ProjectContext } from '../../services/storage/ObjectStore';
@@ -17,13 +24,8 @@ import {
 } from '../../services/storage/ObjectStoreService';
 import { createObjectStoreFsBridge } from '../../services/storage/createObjectStoreFsBridge';
 
-export type SensitivityLevel = 'Public' | 'Internal' | 'Confidential' | 'Client-Confidential';
-
-export interface GovernanceScope {
-  workspaceId: string;
-  projectId: string;
-  actorId: string;
-}
+export type { GovernanceScope, SensitivityLevel };
+export type { ProjectRole };
 
 export interface IngestArtifactInput {
   scope: GovernanceScope;
@@ -77,6 +79,30 @@ export interface DeliverableVersionSummary {
   createdAtUtc: string;
 }
 
+export interface ProjectRoleBindingSummary {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  role: ProjectRole;
+  grantedBy: string;
+  grantedAtUtc: string;
+  revokedAtUtc: string | null;
+}
+
+export interface PolicyOverrideSummary {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  providerId: string;
+  sensitivityLevel: SensitivityLevel;
+  reason: string;
+  approvedBy: string;
+  expiresAtUtc: string | null;
+  createdAtUtc: string;
+  revokedAtUtc: string | null;
+}
+
 type ArtifactRow = Omit<ArtifactSummary, 'referencedVersionCount'>;
 
 type DeliverableRow = {
@@ -91,11 +117,37 @@ type DeliverableRow = {
 
 type DeliverableVersionRow = DeliverableVersionSummary;
 
+type ProjectRoleBindingRow = {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  role: ProjectRole;
+  grantedBy: string;
+  grantedAtUtc: string;
+  revokedAtUtc: string | null;
+};
+
+type PolicyOverrideRow = {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  providerId: string;
+  sensitivityLevel: SensitivityLevel;
+  reason: string;
+  approvedBy: string;
+  expiresAtUtc: string | null;
+  createdAtUtc: string;
+  revokedAtUtc: string | null;
+};
+
 type InMemoryState = {
   artifacts: ArtifactRow[];
   deliverables: DeliverableRow[];
   deliverableVersions: DeliverableVersionRow[];
   auditRecords: AuditRecord[];
+  projectRoleBindings: ProjectRoleBindingRow[];
+  policyOverrides: PolicyOverrideRow[];
 };
 
 const DEFAULT_OBJECT_STORE_ROOT = 'korda-object-store';
@@ -105,6 +157,8 @@ const inMemoryState: InMemoryState = {
   deliverables: [],
   deliverableVersions: [],
   auditRecords: [],
+  projectRoleBindings: [],
+  policyOverrides: [],
 };
 
 export class RecordsGovernanceService {
@@ -124,6 +178,12 @@ export class RecordsGovernanceService {
       new DefaultObjectStorePathResolver(),
       DEFAULT_OBJECT_STORE_ROOT,
     );
+    const policyRepository: PolicyRepository = {
+      hasProjectRole: async (projectId, actorId, roles) =>
+        this.hasProjectRoleBinding(projectId, actorId, roles),
+      hasExternalAiOverride: async (input) => this.hasExternalAiOverride(input),
+    };
+    const policyEnforcer = new FailClosedPolicyEnforcer(policyRepository);
 
     const metadataWriter: ObjectMetadataWriter = {
       writeObjectMetadata: async (context, metadata) => {
@@ -143,15 +203,25 @@ export class RecordsGovernanceService {
       },
     };
 
-    this.objectStoreService = new ObjectStoreService(this.objectStore, metadataWriter, objectAuditAppender);
+    this.objectStoreService = new ObjectStoreService(
+      this.objectStore,
+      metadataWriter,
+      objectAuditAppender,
+      policyEnforcer,
+      {
+        run: async <T>(action: () => Promise<T>): Promise<T> => this.runInTransaction(action),
+      },
+    );
 
     this.deliverableService = new DeliverableService(
       {
-        getById: async (artifactId) => this.getArtifactForDeliverable(artifactId),
+        getByIdForProject: async (projectId, artifactId) =>
+          this.getArtifactForDeliverable(projectId, artifactId),
       },
       {
         createDeliverable: async (input) => this.createDeliverableRow(input),
-        getById: async (deliverableId) => this.getDeliverableRow(deliverableId),
+        getByIdForProject: async (projectId, deliverableId) =>
+          this.getDeliverableRow(projectId, deliverableId),
         updateCurrentVersionNo: async (deliverableId, versionNo, updatedAtUtc) =>
           this.updateDeliverableCurrentVersion(deliverableId, versionNo, updatedAtUtc),
         getCurrentVersion: async (deliverableId) => this.getCurrentDeliverableVersion(deliverableId),
@@ -193,6 +263,7 @@ export class RecordsGovernanceService {
       {
         runInTransaction: async <T>(action: () => Promise<T>): Promise<T> => this.runInTransaction(action),
       },
+      policyEnforcer,
     );
   }
 
@@ -200,25 +271,30 @@ export class RecordsGovernanceService {
     validateScope(input.scope);
     await this.ensureScope(input.scope);
 
-    const context = toProjectContext(input.scope);
-    const stored = await this.objectStoreService.put({
-      context,
-      bytes: input.bytes,
-      originalName: input.originalName,
-      mimeType: input.mimeType,
-      artifactType: input.artifactType,
-      discipline: input.discipline,
-      status: input.status,
-      sensitivityLevel: input.sensitivityLevel,
-    });
+    try {
+      const context = toProjectContext(input.scope);
+      const stored = await this.objectStoreService.put({
+        context,
+        bytes: input.bytes,
+        originalName: input.originalName,
+        mimeType: input.mimeType,
+        artifactType: input.artifactType,
+        discipline: input.discipline,
+        status: input.status,
+        sensitivityLevel: input.sensitivityLevel,
+      });
 
-    const row = await this.getArtifactByProjectAndHash(input.scope.projectId, stored.hash);
-    if (!row) {
-      throw new AppError('ARTIFACT_POST_INGEST_MISSING', 'Artifact metadata row was not persisted.');
+      const row = await this.getArtifactByProjectAndHash(input.scope.projectId, stored.hash);
+      if (!row) {
+        throw new AppError('ARTIFACT_POST_INGEST_MISSING', 'Artifact metadata row was not persisted.');
+      }
+
+      const referencedVersionCount = await this.countArtifactVersions(row.id);
+      return mapArtifactRow(row, referencedVersionCount);
+    } catch (error) {
+      await this.tryAppendPolicyDeniedAudit(input.scope, 'artifact.ingest', error);
+      throw error;
     }
-
-    const referencedVersionCount = await this.countArtifactVersions(row.id);
-    return mapArtifactRow(row, referencedVersionCount);
   }
 
   async listArtifacts(scope: GovernanceScope): Promise<ArtifactSummary[]> {
@@ -301,6 +377,13 @@ export class RecordsGovernanceService {
   async listDeliverableVersions(scope: GovernanceScope, deliverableId: string): Promise<DeliverableVersionSummary[]> {
     validateScope(scope);
     await this.ensureScope(scope);
+    const deliverable = await this.getDeliverableRow(scope.projectId, deliverableId);
+    if (!deliverable) {
+      throw new AppError('DELIVERABLE_SCOPE_MISMATCH', 'Deliverable is not visible in the active project scope.', {
+        deliverableId,
+        scopeProjectId: scope.projectId,
+      });
+    }
 
     if (!this.tauriRuntime) {
       return inMemoryState.deliverableVersions
@@ -423,7 +506,12 @@ export class RecordsGovernanceService {
   ): Promise<FinalizeDeliverableResult> {
     validateScope(scope);
     await this.ensureScope(scope);
-    return this.deliverableService.finalizeDeliverable(artifactId, scope.actorId, reason);
+    try {
+      return await this.deliverableService.finalizeDeliverable(scope, artifactId, reason);
+    } catch (error) {
+      await this.tryAppendPolicyDeniedAudit(scope, 'deliverable.finalize', error);
+      throw error;
+    }
   }
 
   async createDeliverableVersion(
@@ -434,23 +522,295 @@ export class RecordsGovernanceService {
   ): Promise<FinalizeDeliverableResult> {
     validateScope(scope);
     await this.ensureScope(scope);
-    return this.deliverableService.createNewVersion(deliverableId, artifactId, scope.actorId, reason);
+    try {
+      return await this.deliverableService.createNewVersion(scope, deliverableId, artifactId, reason);
+    } catch (error) {
+      await this.tryAppendPolicyDeniedAudit(scope, 'deliverable.version', error);
+      throw error;
+    }
   }
 
   async verifyArtifactIntegrity(scope: GovernanceScope, artifactId: string): Promise<ArtifactIntegrityResult> {
     validateScope(scope);
     await this.ensureScope(scope);
-    return this.deliverableService.verifyArtifactIntegrity(artifactId);
+    try {
+      return await this.deliverableService.verifyArtifactIntegrity(scope, artifactId);
+    } catch (error) {
+      await this.tryAppendPolicyDeniedAudit(scope, 'artifact.integrity', error);
+      throw error;
+    }
+  }
+
+  async listProjectRoleBindings(scope: GovernanceScope): Promise<ProjectRoleBindingSummary[]> {
+    validateScope(scope);
+    await this.ensureScope(scope);
+
+    if (!this.tauriRuntime) {
+      return inMemoryState.projectRoleBindings
+        .filter((row) => row.workspaceId === scope.workspaceId && row.projectId === scope.projectId)
+        .slice()
+        .sort((left, right) => right.grantedAtUtc.localeCompare(left.grantedAtUtc));
+    }
+
+    const rows = await this.sqlite.select<{
+      workspace_id: string;
+      project_id: string;
+      actor_id: string;
+      role: ProjectRole;
+      granted_by: string;
+      granted_at_utc: string;
+      revoked_at_utc: string | null;
+    }>(
+      `
+      SELECT
+        workspace_id,
+        project_id,
+        actor_id,
+        role,
+        granted_by,
+        granted_at_utc,
+        revoked_at_utc
+      FROM project_role_bindings
+      WHERE workspace_id = ? AND project_id = ?
+      ORDER BY granted_at_utc DESC, actor_id ASC, role ASC
+      `,
+      [scope.workspaceId, scope.projectId],
+    );
+
+    return rows.map((row) => ({
+      workspaceId: row.workspace_id,
+      projectId: row.project_id,
+      actorId: row.actor_id,
+      role: row.role,
+      grantedBy: row.granted_by,
+      grantedAtUtc: row.granted_at_utc,
+      revokedAtUtc: row.revoked_at_utc,
+    }));
+  }
+
+  async listPolicyOverrides(scope: GovernanceScope): Promise<PolicyOverrideSummary[]> {
+    validateScope(scope);
+    await this.ensureScope(scope);
+
+    if (!this.tauriRuntime) {
+      return inMemoryState.policyOverrides
+        .filter((row) => row.workspaceId === scope.workspaceId && row.projectId === scope.projectId)
+        .slice()
+        .sort((left, right) => right.createdAtUtc.localeCompare(left.createdAtUtc));
+    }
+
+    const rows = await this.sqlite.select<{
+      id: string;
+      workspace_id: string;
+      project_id: string;
+      actor_id: string;
+      provider_id: string;
+      sensitivity_level: SensitivityLevel;
+      reason: string;
+      approved_by: string;
+      expires_at_utc: string | null;
+      created_at_utc: string;
+      revoked_at_utc: string | null;
+    }>(
+      `
+      SELECT
+        id,
+        workspace_id,
+        project_id,
+        actor_id,
+        provider_id,
+        sensitivity_level,
+        reason,
+        approved_by,
+        expires_at_utc,
+        created_at_utc,
+        revoked_at_utc
+      FROM policy_overrides
+      WHERE workspace_id = ? AND project_id = ?
+      ORDER BY created_at_utc DESC
+      `,
+      [scope.workspaceId, scope.projectId],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      projectId: row.project_id,
+      actorId: row.actor_id,
+      providerId: row.provider_id,
+      sensitivityLevel: row.sensitivity_level,
+      reason: row.reason,
+      approvedBy: row.approved_by,
+      expiresAtUtc: row.expires_at_utc,
+      createdAtUtc: row.created_at_utc,
+      revokedAtUtc: row.revoked_at_utc,
+    }));
+  }
+
+  async grantProjectRole(
+    scope: GovernanceScope,
+    actorId: string,
+    role: ProjectRole,
+    grantedBy = scope.actorId,
+  ): Promise<void> {
+    validateScope(scope);
+    if (!actorId.trim()) {
+      throw new AppError('ACTOR_REQUIRED', 'actorId is required.');
+    }
+    await this.ensureScope(scope);
+
+    const normalizedActorId = actorId.trim();
+    const normalizedGrantedBy = grantedBy.trim() || scope.actorId;
+    const now = new Date().toISOString();
+
+    await this.runInTransaction(async () => {
+      await this.upsertProjectRoleBinding({
+        workspaceId: scope.workspaceId,
+        projectId: scope.projectId,
+        actorId: normalizedActorId,
+        role,
+        grantedBy: normalizedGrantedBy,
+        grantedAtUtc: now,
+      });
+
+      await this.appendAudit(scope, {
+        actorId: scope.actorId,
+        action: 'policy.role.granted',
+        entityType: 'policy_role_binding',
+        entityId: `${normalizedActorId}:${role}`,
+        metadata: {
+          workspaceId: scope.workspaceId,
+          projectId: scope.projectId,
+          actorId: normalizedActorId,
+          role,
+          grantedBy: normalizedGrantedBy,
+          grantedAtUtc: now,
+        },
+        eventTsUtc: now,
+      });
+    });
+  }
+
+  async grantExternalAiOverride(input: {
+    scope: GovernanceScope;
+    actorId: string;
+    providerId: string;
+    sensitivityLevel: SensitivityLevel;
+    reason: string;
+    approvedBy?: string;
+    expiresAtUtc?: string | null;
+  }): Promise<string> {
+    validateScope(input.scope);
+    await this.ensureScope(input.scope);
+    const actorId = input.actorId.trim();
+    const providerId = input.providerId.trim();
+    const reason = input.reason.trim();
+    const approvedBy = input.approvedBy?.trim() || input.scope.actorId;
+
+    if (!actorId) {
+      throw new AppError('ACTOR_REQUIRED', 'actorId is required.');
+    }
+    if (!providerId) {
+      throw new AppError('PROVIDER_REQUIRED', 'providerId is required.');
+    }
+    if (!reason) {
+      throw new AppError('OVERRIDE_REASON_REQUIRED', 'reason is required.');
+    }
+
+    const overrideId = createId('policy-override');
+    const now = new Date().toISOString();
+
+    await this.runInTransaction(async () => {
+      if (!this.tauriRuntime) {
+        inMemoryState.policyOverrides.push({
+          id: overrideId,
+          workspaceId: input.scope.workspaceId,
+          projectId: input.scope.projectId,
+          actorId,
+          providerId,
+          sensitivityLevel: input.sensitivityLevel,
+          reason,
+          approvedBy,
+          expiresAtUtc: input.expiresAtUtc ?? null,
+          createdAtUtc: now,
+          revokedAtUtc: null,
+        });
+      } else {
+        await this.sqlite.execute(
+          `
+          INSERT INTO policy_overrides (
+            id,
+            workspace_id,
+            project_id,
+            actor_id,
+            provider_id,
+            sensitivity_level,
+            reason,
+            approved_by,
+            expires_at_utc,
+            created_at_utc,
+            revoked_at_utc
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          `,
+          [
+            overrideId,
+            input.scope.workspaceId,
+            input.scope.projectId,
+            actorId,
+            providerId,
+            input.sensitivityLevel,
+            reason,
+            approvedBy,
+            input.expiresAtUtc ?? null,
+            now,
+          ],
+        );
+      }
+
+      await this.appendAudit(input.scope, {
+        actorId: input.scope.actorId,
+        action: 'policy.override.granted',
+        entityType: 'policy_override',
+        entityId: overrideId,
+        metadata: {
+          workspaceId: input.scope.workspaceId,
+          projectId: input.scope.projectId,
+          actorId,
+          providerId,
+          sensitivityLevel: input.sensitivityLevel,
+          reason,
+          approvedBy,
+          expiresAtUtc: input.expiresAtUtc ?? null,
+        },
+        eventTsUtc: now,
+      });
+    });
+
+    return overrideId;
   }
 
   private async ensureScope(scope: GovernanceScope): Promise<void> {
+    validateScope(scope);
+    const now = new Date().toISOString();
+    const projectSeenInSession = this.projectWorkspaceMap.has(scope.projectId);
     this.projectWorkspaceMap.set(scope.projectId, scope.workspaceId);
 
     if (!this.tauriRuntime) {
+      if (!projectSeenInSession) {
+        await this.upsertProjectRoleBinding({
+          workspaceId: scope.workspaceId,
+          projectId: scope.projectId,
+          actorId: scope.actorId,
+          role: 'project_owner',
+          grantedBy: scope.actorId,
+          grantedAtUtc: now,
+        });
+      }
       return;
     }
 
-    const now = new Date().toISOString();
+    const projectExists = await this.projectExists(scope.projectId);
     await this.sqlite.execute(
       `
       INSERT OR IGNORE INTO workspaces (id, name, slug, created_at_utc, updated_at_utc)
@@ -466,6 +826,17 @@ export class RecordsGovernanceService {
       `,
       [scope.projectId, scope.workspaceId, `Project ${scope.projectId}`, now, now],
     );
+
+    if (!projectExists) {
+      await this.upsertProjectRoleBinding({
+        workspaceId: scope.workspaceId,
+        projectId: scope.projectId,
+        actorId: scope.actorId,
+        role: 'project_owner',
+        grantedBy: scope.actorId,
+        grantedAtUtc: now,
+      });
+    }
   }
 
   private async insertArtifactFromMetadata(
@@ -761,6 +1132,7 @@ export class RecordsGovernanceService {
   }
 
   private async getArtifactForDeliverable(
+    projectId: string,
     artifactId: string,
   ): Promise<{
     id: string;
@@ -768,9 +1140,10 @@ export class RecordsGovernanceService {
     sha256: string;
     objectKey: string;
     artifactType: string;
+    sensitivityLevel: SensitivityLevel;
     immutable: boolean;
   } | null> {
-    const row = await this.getArtifactById(artifactId);
+    const row = await this.getArtifactByProjectAndId(projectId, artifactId);
     if (!row) {
       return null;
     }
@@ -780,15 +1153,20 @@ export class RecordsGovernanceService {
       sha256: row.sha256,
       objectKey: row.objectKey,
       artifactType: row.artifactType,
+      sensitivityLevel: row.sensitivityLevel,
       immutable: row.immutable,
     };
   }
 
   private async getDeliverableRow(
+    projectId: string,
     deliverableId: string,
   ): Promise<{ id: string; projectId: string; currentVersionNo: number; status: 'finalized' } | null> {
     if (!this.tauriRuntime) {
-      const row = inMemoryState.deliverables.find((item) => item.id === deliverableId) ?? null;
+      const row =
+        inMemoryState.deliverables.find(
+          (item) => item.id === deliverableId && item.projectId === projectId,
+        ) ?? null;
       if (!row) {
         return null;
       }
@@ -809,10 +1187,10 @@ export class RecordsGovernanceService {
       `
       SELECT id, project_id, current_version_no, status
       FROM deliverables
-      WHERE id = ?
+      WHERE id = ? AND project_id = ?
       LIMIT 1
       `,
-      [deliverableId],
+      [deliverableId, projectId],
     );
 
     const row = rows[0];
@@ -1141,9 +1519,9 @@ export class RecordsGovernanceService {
     }));
   }
 
-  private async getArtifactById(artifactId: string): Promise<ArtifactRow | null> {
+  private async getArtifactByProjectAndId(projectId: string, artifactId: string): Promise<ArtifactRow | null> {
     if (!this.tauriRuntime) {
-      return inMemoryState.artifacts.find((row) => row.id === artifactId) ?? null;
+      return inMemoryState.artifacts.find((row) => row.id === artifactId && row.projectId === projectId) ?? null;
     }
 
     const rows = await this.sqlite.select<{
@@ -1179,10 +1557,10 @@ export class RecordsGovernanceService {
         created_by,
         created_at_utc
       FROM artifacts
-      WHERE id = ?
+      WHERE id = ? AND project_id = ?
       LIMIT 1
       `,
-      [artifactId],
+      [artifactId, projectId],
     );
 
     const row = rows[0];
@@ -1332,6 +1710,221 @@ export class RecordsGovernanceService {
       counts.set(row.artifact_id, Number(row.total));
     });
     return counts;
+  }
+
+  private async projectExists(projectId: string): Promise<boolean> {
+    if (!this.tauriRuntime) {
+      return this.projectWorkspaceMap.has(projectId);
+    }
+
+    const rows = await this.sqlite.select<{ id: string }>(
+      `
+      SELECT id
+      FROM projects
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [projectId],
+    );
+    return Boolean(rows[0]);
+  }
+
+  private async upsertProjectRoleBinding(input: {
+    workspaceId: string;
+    projectId: string;
+    actorId: string;
+    role: ProjectRole;
+    grantedBy: string;
+    grantedAtUtc: string;
+  }): Promise<void> {
+    if (!this.tauriRuntime) {
+      const existing = inMemoryState.projectRoleBindings.find(
+        (row) =>
+          row.projectId === input.projectId &&
+          row.actorId === input.actorId &&
+          row.role === input.role &&
+          row.revokedAtUtc === null,
+      );
+      if (existing) {
+        return;
+      }
+      inMemoryState.projectRoleBindings.push({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        actorId: input.actorId,
+        role: input.role,
+        grantedBy: input.grantedBy,
+        grantedAtUtc: input.grantedAtUtc,
+        revokedAtUtc: null,
+      });
+      return;
+    }
+
+    await this.sqlite.execute(
+      `
+      INSERT OR IGNORE INTO project_role_bindings (
+        workspace_id,
+        project_id,
+        actor_id,
+        role,
+        granted_by,
+        granted_at_utc,
+        revoked_at_utc
+      )
+      VALUES (?, ?, ?, ?, ?, ?, NULL)
+      `,
+      [
+        input.workspaceId,
+        input.projectId,
+        input.actorId,
+        input.role,
+        input.grantedBy,
+        input.grantedAtUtc,
+      ],
+    );
+  }
+
+  private async hasProjectRoleBinding(
+    projectId: string,
+    actorId: string,
+    roles: readonly ProjectRole[],
+  ): Promise<boolean> {
+    if (roles.length === 0) {
+      return false;
+    }
+
+    if (!this.tauriRuntime) {
+      return inMemoryState.projectRoleBindings.some(
+        (row) =>
+          row.projectId === projectId &&
+          row.actorId === actorId &&
+          row.revokedAtUtc === null &&
+          roles.includes(row.role),
+      );
+    }
+
+    const placeholders = roles.map(() => '?').join(', ');
+    const rows = await this.sqlite.select<{ actor_id: string }>(
+      `
+      SELECT actor_id
+      FROM project_role_bindings
+      WHERE project_id = ?
+        AND actor_id = ?
+        AND revoked_at_utc IS NULL
+        AND role IN (${placeholders})
+      LIMIT 1
+      `,
+      [projectId, actorId, ...roles],
+    );
+    return Boolean(rows[0]);
+  }
+
+  private async hasExternalAiOverride(input: {
+    projectId: string;
+    actorId: string;
+    providerId: string;
+    sensitivityLevel: SensitivityLevel;
+    overrideId?: string | null;
+    asOfUtc: string;
+  }): Promise<boolean> {
+    const asOfMillis = Date.parse(input.asOfUtc);
+
+    if (!this.tauriRuntime) {
+      return inMemoryState.policyOverrides.some((row) => {
+        if (row.projectId !== input.projectId) {
+          return false;
+        }
+        if (row.actorId !== input.actorId) {
+          return false;
+        }
+        if (row.providerId !== input.providerId) {
+          return false;
+        }
+        if (row.sensitivityLevel !== input.sensitivityLevel) {
+          return false;
+        }
+        if (row.revokedAtUtc !== null) {
+          return false;
+        }
+        if (input.overrideId && row.id !== input.overrideId) {
+          return false;
+        }
+        if (!row.expiresAtUtc) {
+          return true;
+        }
+        return Date.parse(row.expiresAtUtc) > asOfMillis;
+      });
+    }
+
+    const params: unknown[] = [
+      input.projectId,
+      input.actorId,
+      input.providerId,
+      input.sensitivityLevel,
+      input.asOfUtc,
+    ];
+    let overrideWhere = '';
+    if (input.overrideId) {
+      overrideWhere = 'AND id = ?';
+      params.push(input.overrideId);
+    }
+
+    const rows = await this.sqlite.select<{ id: string }>(
+      `
+      SELECT id
+      FROM policy_overrides
+      WHERE project_id = ?
+        AND actor_id = ?
+        AND provider_id = ?
+        AND sensitivity_level = ?
+        AND revoked_at_utc IS NULL
+        AND (expires_at_utc IS NULL OR expires_at_utc > ?)
+        ${overrideWhere}
+      LIMIT 1
+      `,
+      params,
+    );
+    return Boolean(rows[0]);
+  }
+
+  private async tryAppendPolicyDeniedAudit(
+    scope: GovernanceScope,
+    operation: string,
+    error: unknown,
+  ): Promise<void> {
+    if (!isAppError(error)) {
+      return;
+    }
+
+    const code = error.code;
+    if (
+      !(
+        code.startsWith('POLICY_') ||
+        code === 'PROJECT_SCOPE_VIOLATION' ||
+        code === 'DELIVERABLE_SCOPE_MISMATCH' ||
+        code === 'EXTERNAL_AI_DEFAULT_DENY' ||
+        code === 'EXTERNAL_AI_CONTEXT_REQUIRED'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await this.appendAudit(scope, {
+        actorId: scope.actorId,
+        action: 'policy.denied',
+        entityType: 'policy',
+        entityId: operation,
+        metadata: {
+          operation,
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        },
+      });
+    } catch {
+      // Preserve original policy denial when audit append best-effort fails.
+    }
   }
 
   private resolveWorkspaceId(projectId: string): string {

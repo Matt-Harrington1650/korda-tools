@@ -15,6 +15,7 @@ export type {
   ExecutionErrorEvent,
   ExecutionActionType,
   ExecutionEvent,
+  ExecutionGovernanceContext,
   ExecutionErrorResult,
   ExecutionPipelineConfig,
   ExecutionProgressEvent,

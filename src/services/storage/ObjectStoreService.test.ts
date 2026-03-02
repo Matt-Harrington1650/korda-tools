@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { AppError } from '../../lib/errors';
+import type { PolicyEnforcer } from '../policy/PolicyEnforcer';
 import { ObjectStoreService, type ObjectAuditAppender, type ObjectMetadataWriter } from './ObjectStoreService';
 import type {
   ObjectMetadataRecord,
@@ -47,6 +48,48 @@ class FakeAuditAppender implements ObjectAuditAppender {
   }
 }
 
+class AllowPolicyEnforcer implements PolicyEnforcer {
+  async authorizeObjectIngest() {
+    return {
+      decision: 'allowed' as const,
+      code: 'POLICY_ALLOWED_INGEST',
+      reason: 'allowed',
+    };
+  }
+
+  async authorizeDeliverableFinalize() {
+    return {
+      decision: 'blocked' as const,
+      code: 'POLICY_NOT_USED',
+      reason: 'not used in this test suite',
+    };
+  }
+
+  async authorizeDeliverableVersion() {
+    return {
+      decision: 'blocked' as const,
+      code: 'POLICY_NOT_USED',
+      reason: 'not used in this test suite',
+    };
+  }
+
+  async authorizeIntegrityCheck() {
+    return {
+      decision: 'blocked' as const,
+      code: 'POLICY_NOT_USED',
+      reason: 'not used in this test suite',
+    };
+  }
+
+  async authorizeExternalAi() {
+    return {
+      decision: 'blocked' as const,
+      code: 'POLICY_NOT_USED',
+      reason: 'not used in this test suite',
+    };
+  }
+}
+
 describe('ObjectStoreService.put', () => {
   const context: ProjectContext = {
     workspaceId: 'ws-1',
@@ -59,6 +102,7 @@ describe('ObjectStoreService.put', () => {
       new FakeObjectStore(),
       new FakeMetadataWriter(),
       new FakeAuditAppender(),
+      new AllowPolicyEnforcer(),
     );
 
     await expect(
@@ -76,7 +120,12 @@ describe('ObjectStoreService.put', () => {
 
   it('persists required metadata fields on successful write', async () => {
     const metadataWriter = new FakeMetadataWriter();
-    const service = new ObjectStoreService(new FakeObjectStore(), metadataWriter, new FakeAuditAppender());
+    const service = new ObjectStoreService(
+      new FakeObjectStore(),
+      metadataWriter,
+      new FakeAuditAppender(),
+      new AllowPolicyEnforcer(),
+    );
 
     await service.put({
       context,

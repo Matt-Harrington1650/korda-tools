@@ -61,7 +61,8 @@ pub async fn object_store_exists(app: AppHandle, path: String) -> Result<bool, S
 #[tauri::command]
 pub async fn object_store_mkdirp(app: AppHandle, path: String) -> Result<(), String> {
     let target = resolve_target_path(&app, &path)?;
-    fs::create_dir_all(target).map_err(|error| format!("failed to create object store directory: {error}"))
+    fs::create_dir_all(target)
+        .map_err(|error| format!("failed to create object store directory: {error}"))
 }
 
 #[tauri::command]
@@ -82,7 +83,8 @@ pub async fn object_store_write_file_atomic(
         .map_err(|error| format!("failed to create target parent directory: {error}"))?;
 
     let temp_path = parent.join(format!(".{}.tmp", Uuid::new_v4()));
-    fs::write(&temp_path, &bytes).map_err(|error| format!("failed to write temp object file: {error}"))?;
+    fs::write(&temp_path, &bytes)
+        .map_err(|error| format!("failed to write temp object file: {error}"))?;
 
     match fs::rename(&temp_path, &target) {
         Ok(_) => Ok(()),
@@ -93,7 +95,9 @@ pub async fn object_store_write_file_atomic(
             }
 
             let _ = fs::remove_file(&temp_path);
-            Err(format!("failed to atomically rename temp object file: {error}"))
+            Err(format!(
+                "failed to atomically rename temp object file: {error}"
+            ))
         }
     }
 }
