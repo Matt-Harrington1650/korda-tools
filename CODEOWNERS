@@ -1,0 +1,9 @@
+# Placeholder CODEOWNERS for solo -> small team transition.
+# Replace @REPO_OWNER with actual GitHub handle/team before external contribution.
+
+* @REPO_OWNER
+
+/.github/ @REPO_OWNER
+/docs/ @REPO_OWNER
+/src/ @REPO_OWNER
+/src-tauri/ @REPO_OWNER
