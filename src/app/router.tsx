@@ -11,6 +11,7 @@ import { ToolsLibraryPage } from '../pages/ToolsLibraryPage';
 import { CustomToolDetailPage } from '../pages/CustomToolDetailPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
 import { HelpCenterPage } from '../pages/HelpCenterPage';
+import { RecordsGovernancePage } from '../pages/RecordsGovernancePage';
 
 export const appRouter = createBrowserRouter([
   {
@@ -25,6 +26,7 @@ export const appRouter = createBrowserRouter([
       { path: 'registry/:toolId', element: <ToolDetailPage /> },
       { path: 'chat', element: <ChatPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },
+      { path: 'records', element: <RecordsGovernancePage /> },
       { path: 'help', element: <HelpCenterPage /> },
       { path: 'help/:slug', element: <HelpCenterPage /> },
       { path: 'settings', element: <SettingsPage /> },

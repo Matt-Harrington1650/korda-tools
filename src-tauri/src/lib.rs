@@ -1,4 +1,5 @@
 mod help;
+mod object_store;
 mod secrets;
 mod tools;
 
@@ -90,6 +91,30 @@ fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: include_str!("../migrations/0014_create_help_center.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 15,
+            description: "create_governance_core",
+            sql: include_str!("../migrations/0015_create_governance_core.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 16,
+            description: "create_deliverables",
+            sql: include_str!("../migrations/0016_create_deliverables.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 17,
+            description: "harden_audit_chain",
+            sql: include_str!("../migrations/0017_harden_audit_chain.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 18,
+            description: "create_sheet_knowledge_tables",
+            sql: include_str!("../migrations/0018_create_sheet_knowledge_tables.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -100,6 +125,10 @@ pub fn run() {
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
+            object_store::object_store_exists,
+            object_store::object_store_mkdirp,
+            object_store::object_store_write_file_atomic,
+            object_store::object_store_read_file,
             tools::commands::tools_list,
             tools::commands::tool_get,
             tools::commands::tool_create,
@@ -136,4 +165,67 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sql_migrations;
+    use std::collections::HashSet;
+
+    #[test]
+    fn migrations_are_strictly_increasing() {
+        let migrations = sql_migrations();
+        assert!(!migrations.is_empty(), "migration list must not be empty");
+
+        let mut previous = 0;
+        for migration in migrations {
+            assert!(
+                migration.version > previous,
+                "migration versions must be strictly increasing: {} <= {}",
+                migration.version,
+                previous
+            );
+            previous = migration.version;
+        }
+    }
+
+    #[test]
+    fn migration_descriptions_and_sql_are_valid() {
+        let migrations = sql_migrations();
+        let mut descriptions = HashSet::new();
+
+        for migration in migrations {
+            assert!(
+                !migration.description.trim().is_empty(),
+                "migration description must not be empty for version {}",
+                migration.version
+            );
+            assert!(
+                descriptions.insert(migration.description.to_string()),
+                "duplicate migration description detected: {}",
+                migration.description
+            );
+            assert!(
+                !migration.sql.trim().is_empty(),
+                "migration SQL must not be empty for version {}",
+                migration.version
+            );
+        }
+    }
+
+    #[test]
+    fn governance_migration_versions_present() {
+        let versions: HashSet<i64> = sql_migrations()
+            .into_iter()
+            .map(|migration| migration.version)
+            .collect();
+
+        for expected in [15, 16, 17, 18] {
+            assert!(
+                versions.contains(&expected),
+                "expected governance migration version {} to be present",
+                expected
+            );
+        }
+    }
 }

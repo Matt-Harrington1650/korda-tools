@@ -116,6 +116,14 @@ export function AppShell() {
               className={({ isActive }) =>
                 `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
               }
+              to="/records"
+            >
+              Records
+            </NavLink>
+            <NavLink
+              className={({ isActive }) =>
+                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
+              }
               to="/help"
             >
               Start Here

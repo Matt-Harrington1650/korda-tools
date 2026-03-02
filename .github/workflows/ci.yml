@@ -29,3 +29,20 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Policy Scan - No Direct FS Imports In UI
+        shell: bash
+        run: |
+          if rg -n "from 'fs'|require\('fs'\)|tauri.*fs|@tauri-apps/api/fs" src/pages src/components src/features; then
+            echo "Forbidden direct filesystem usage found in UI layer."
+            exit 1
+          fi
+
+      - name: Migration Chain Sanity
+        shell: bash
+        run: |
+          rg -n "0015_create_governance_core.sql|0016_create_deliverables.sql|0017_harden_audit_chain.sql|0018_create_sheet_knowledge_tables.sql" src-tauri/src/lib.rs
+
+      - name: Governance Docs Presence
+        shell: bash
+        run: |
+          rg -n "Definition of Done|## Tests" docs/repo_governance_v1.md docs/constitution_v1.md docs/ai_storage_control_matrix_v1.md docs/ai_confidence_labeling_policy_v1.md

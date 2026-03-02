@@ -6,6 +6,7 @@ interface ArtifactRecord {
   projectId: string;
   sha256: string;
   objectKey: string;
+  artifactType: string;
   immutable: boolean;
 }
 
@@ -279,6 +280,13 @@ export class DeliverableService {
         throw new AppError('ARTIFACT_NOT_IMMUTABLE', 'Only immutable artifacts can back deliverables.', {
           artifactId,
         });
+      }
+      if (artifact.artifactType.toLowerCase() === 'ai_output') {
+        throw new AppError(
+          'ARTIFACT_AUTHORITY_REJECTED',
+          'AI Output is never authoritative and cannot be finalized as record.',
+          { artifactId },
+        );
       }
 
       return artifact;

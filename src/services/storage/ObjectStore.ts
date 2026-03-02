@@ -29,6 +29,10 @@ export interface ObjectMetadataRecord {
   sizeBytes: number;
   mimeType: string;
   originalName: string;
+  artifactType: string;
+  discipline: string;
+  status: string;
+  sensitivityLevel: 'Public' | 'Internal' | 'Confidential' | 'Client-Confidential';
   projectId: string;
   createdBy: string;
   createdAtUtc: string;
