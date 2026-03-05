@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   schedules: 'korda-tools/schedules',
   scheduledRunLogs: 'korda-tools/scheduledRunLogs',
   chatThreads: 'korda-tools/chatThreads',
+  sophon: 'korda-tools/sophon',
 } as const;
 
 export type StorageCollectionKey = keyof typeof STORAGE_KEYS;
