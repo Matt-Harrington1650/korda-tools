@@ -11,6 +11,8 @@
 - Comparison matrices and risk registers
 - Readiness scorecards
 - Deterministic evaluation harness tests (`*.test.ts`)
+- Verification runbooks (`*_runbook.md`)
+- Deterministic verification scripts under `internal/evaluation/scripts/`
 
 ## Prohibited Contents
 - Secrets, credentials, or production data exports

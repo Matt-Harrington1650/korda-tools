@@ -38,3 +38,9 @@
 - [x] Store tests cover staged ingestion/index lifecycle.
 - [x] UI smoke tests cover Sophon route rendering.
 - [ ] Full private-IPC NVIDIA runtime adapter parity with KORDA-RAG internals.
+
+## Next-Use Verification
+- [x] Tier 1 preflight runbook exists (`sophon_next_use_tier1_runbook.md`).
+- [x] Tier 2 deep verification runbook exists (`sophon_next_use_tier2_runbook.md`).
+- [x] Automated verifier script exists (`scripts/sophon-verify-next-use.ps1`).
+- [x] Machine-readable verifier summary artifact path is defined.

@@ -1,0 +1,99 @@
+{
+    "generatedAtUtc":  "2026-03-07T01:03:54.4629029Z",
+    "tier":  "tier2",
+    "overallStatus":  "blocked",
+    "failCount":  4,
+    "warningCount":  4,
+    "canonicalPython":  "C:\\code\\ai-tool-hub\\.sophon-py\\Scripts\\python.exe",
+    "statePath":  "C:\\Users\\mharrington\\AppData\\Roaming\\com.mattharrington.kordatools\\sophon_runtime_state.json",
+    "checks":  [
+                   {
+                       "id":  "runtime_policy_python_path",
+                       "status":  "pass",
+                       "message":  "Canonical Sophon Python path exists.",
+                       "details":  {
+                                       "canonicalPython":  "C:\\code\\ai-tool-hub\\.sophon-py\\Scripts\\python.exe"
+                                   }
+                   },
+                   {
+                       "id":  "runtime_policy_env",
+                       "status":  "fail",
+                       "message":  "SOPHON_PYTHON_BIN (User) is not set.",
+                       "details":  {
+                                       "expected":  "C:\\code\\ai-tool-hub\\.sophon-py\\Scripts\\python.exe",
+                                       "actual":  null
+                                   }
+                   },
+                   {
+                       "id":  "runtime_dependency_imports",
+                       "status":  "pass",
+                       "message":  "Bridge dependencies are importable from canonical venv.",
+                       "details":  {
+                                       "output":  "OK"
+                                   }
+                   },
+                   {
+                       "id":  "runtime_worker_process_scan",
+                       "status":  "warn",
+                       "message":  "Unable to inspect worker processes in this shell context.",
+                       "details":  {
+                                       "error":  "Access denied "
+                                   }
+                   },
+                   {
+                       "id":  "runtime_worker_process",
+                       "status":  "warn",
+                       "message":  "Sophon runtime worker process not found. Launch KORDA TOOLS before this check.",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "state_file_path",
+                       "status":  "pass",
+                       "message":  "Using canonical APPDATA Sophon state file.",
+                       "details":  {
+                                       "statePath":  "C:\\Users\\mharrington\\AppData\\Roaming\\com.mattharrington.kordatools\\sophon_runtime_state.json"
+                                   }
+                   },
+                   {
+                       "id":  "readiness_presence",
+                       "status":  "pass",
+                       "message":  "runtimeReadiness is present.",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "readiness_python_runtime",
+                       "status":  "pass",
+                       "message":  "python_runtime=pass",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "readiness_torch_runtime",
+                       "status":  "pass",
+                       "message":  "torch_runtime=pass",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "readiness_bridge_init",
+                       "status":  "fail",
+                       "message":  "bridge_init=fail : NVIDIA bridge init failed: No module named \u0027opentelemetry.instrumentation.milvus\u0027",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "readiness_api_key",
+                       "status":  "pass",
+                       "message":  "api_key readiness is acceptable for current egress mode.",
+                       "details":  {
+
+                                   }
+                   },
+                   {
