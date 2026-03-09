@@ -265,3 +265,18 @@ export interface PolicyEnforcer {
 4. Verify RAG flow enforces ProjectContext and external AI policy checks before model call.
 5. Verify finalize flow creates immutable version and blocks post-finalization mutation.
 6. Verify audit chain validation succeeds and reports failure details when hash linkage is intentionally broken in test data.
+
+## Sophon Integration Points
+1. Sophon is a first-class module in KORDA Tools and is routed under `/sophon/*`.
+2. Sophon UI and state live in:
+   - `src/pages/sophon/*`
+   - `src/features/sophon/*`
+3. Sophon follows the same boundary rule:
+   - UI does not touch filesystem directly.
+   - privileged operations are mediated by services/adapters.
+4. Sophon governance posture:
+   - offline-only policy is mandatory.
+   - outbound egress remains blocked by default.
+   - configuration and control actions are auditable from inside the app.
+5. Sophon ingestion control plane is stage-based (`enumerate -> classify -> extract -> normalize -> chunk -> embed -> index -> validate -> publish`) and managed entirely in-product.
+6. Sophon does not require or expose a localhost browser admin surface.

@@ -1,4 +1,9 @@
-export type SophonRuntimeTransport = 'in_process' | 'ipc_named_pipe' | 'ipc_unix_socket' | 'http';
+export type SophonRuntimeTransport =
+  | 'in_process'
+  | 'ipc_named_pipe'
+  | 'ipc_unix_socket'
+  | 'ipc_stdio'
+  | 'http';
 
 export type SophonOfflinePolicyInput = {
   offlineOnly: boolean;
@@ -40,4 +45,3 @@ export const assertSophonOfflinePolicy = (input: SophonOfflinePolicyInput): void
     throw new Error(result.errors.join(' '));
   }
 };
-

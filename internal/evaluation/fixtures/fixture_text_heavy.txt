@@ -1,0 +1,7 @@
+﻿KORDA EPC Fixture - Text Heavy
+Project: Demo EPC-42
+Document: Specification 001
+Requirements:
+- Pressure rating 150 psi
+- Material ASTM A106 Grade B
+- Follow ASME B31.3 for process piping

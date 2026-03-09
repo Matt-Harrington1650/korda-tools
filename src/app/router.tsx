@@ -12,6 +12,16 @@ import { CustomToolDetailPage } from '../pages/CustomToolDetailPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
 import { HelpCenterPage } from '../pages/HelpCenterPage';
 import { RecordsGovernancePage } from '../pages/RecordsGovernancePage';
+import { SophonLayout } from '../pages/sophon/SophonLayout';
+import { SophonDashboardPage } from '../pages/sophon/SophonDashboardPage';
+import { SophonSourcesPage } from '../pages/sophon/SophonSourcesPage';
+import { SophonIngestionJobsPage } from '../pages/sophon/SophonIngestionJobsPage';
+import { SophonIndexPage } from '../pages/sophon/SophonIndexPage';
+import { SophonRetrievalLabPage } from '../pages/sophon/SophonRetrievalLabPage';
+import { SophonModelsTuningPage } from '../pages/sophon/SophonModelsTuningPage';
+import { SophonPoliciesAuditPage } from '../pages/sophon/SophonPoliciesAuditPage';
+import { SophonBackupRestorePage } from '../pages/sophon/SophonBackupRestorePage';
+import { SophonSettingsPage } from '../pages/sophon/SophonSettingsPage';
 
 export const appRouter = createBrowserRouter([
   {
@@ -25,6 +35,22 @@ export const appRouter = createBrowserRouter([
       { path: 'registry/new', element: <AddToolPage /> },
       { path: 'registry/:toolId', element: <ToolDetailPage /> },
       { path: 'chat', element: <ChatPage /> },
+      {
+        path: 'sophon',
+        element: <SophonLayout />,
+        children: [
+          { index: true, element: <SophonDashboardPage /> },
+          { path: 'dashboard', element: <SophonDashboardPage /> },
+          { path: 'sources', element: <SophonSourcesPage /> },
+          { path: 'ingestion-jobs', element: <SophonIngestionJobsPage /> },
+          { path: 'index', element: <SophonIndexPage /> },
+          { path: 'retrieval-lab', element: <SophonRetrievalLabPage /> },
+          { path: 'models-tuning', element: <SophonModelsTuningPage /> },
+          { path: 'policies-audit', element: <SophonPoliciesAuditPage /> },
+          { path: 'backup-restore', element: <SophonBackupRestorePage /> },
+          { path: 'settings', element: <SophonSettingsPage /> },
+        ],
+      },
       { path: 'workflows', element: <WorkflowsPage /> },
       { path: 'records', element: <RecordsGovernancePage /> },
       { path: 'help', element: <HelpCenterPage /> },
