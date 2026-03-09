@@ -97,3 +97,44 @@
                                    }
                    },
                    {
+                       "id":  "backend_ingestor_health",
+                       "status":  "fail",
+                       "message":  "Health endpoint failed: Unable to connect to the remote server",
+                       "details":  {
+                                       "url":  "http://localhost:8082/v1/health?check_dependencies=true"
+                                   }
+                   },
+                   {
+                       "id":  "backend_rag_health",
+                       "status":  "fail",
+                       "message":  "Health endpoint failed: Unable to connect to the remote server",
+                       "details":  {
+                                       "url":  "http://localhost:8081/v1/health?check_dependencies=true"
+                                   }
+                   },
+                   {
+                       "id":  "intake_glob_edge_case",
+                       "status":  "pass",
+                       "message":  "Root-level and nested PDF glob matching is valid.",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "state_sources_present",
+                       "status":  "warn",
+                       "message":  "No sources configured. Add at least one source for ingestion verification.",
+                       "details":  {
+
+                                   }
+                   },
+                   {
+                       "id":  "state_snapshot_present",
+                       "status":  "warn",
+                       "message":  "No index snapshots present. Snapshot/restore path not yet verified this session.",
+                       "details":  {
+
+                                   }
+                   }
+               ]
+}

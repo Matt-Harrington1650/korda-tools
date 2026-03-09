@@ -40,6 +40,7 @@
 - [ ] Full private-IPC NVIDIA runtime adapter parity with KORDA-RAG internals.
 
 ## Next-Use Verification
+- [x] Consolidated Two-Tier verification plan exists (`sophon_next_use_verification_plan.md`).
 - [x] Tier 1 preflight runbook exists (`sophon_next_use_tier1_runbook.md`).
 - [x] Tier 2 deep verification runbook exists (`sophon_next_use_tier2_runbook.md`).
 - [x] Automated verifier script exists (`scripts/sophon-verify-next-use.ps1`).
