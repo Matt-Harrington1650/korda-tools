@@ -174,6 +174,10 @@ export function HelpCenterPage() {
       pages: items.sort((left, right) => left.sortOrder - right.sortOrder || left.title.localeCompare(right.title)),
     }));
   }, [visiblePages]);
+  const editorCategoryOptions = useMemo(() => {
+    const options = new Set<string>([defaultCategory, ...visiblePages.map((page) => page.category)]);
+    return Array.from(options).sort((left, right) => left.localeCompare(right));
+  }, [visiblePages]);
 
   const currentPage = activeSlug ? pageMap[activeSlug] : undefined;
 
@@ -545,13 +549,31 @@ export function HelpCenterPage() {
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Category</span>
-                <input
+                <select
                   className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                   onChange={(event) => {
-                    setDraftCategory(event.target.value);
+                    const next = event.target.value;
+                    setDraftCategory(next === 'custom' ? '' : next);
                   }}
-                  value={draftCategory}
-                />
+                  value={editorCategoryOptions.includes(draftCategory) ? draftCategory : 'custom'}
+                >
+                  {editorCategoryOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="custom">Custom</option>
+                </select>
+                {!editorCategoryOptions.includes(draftCategory) ? (
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => {
+                      setDraftCategory(event.target.value);
+                    }}
+                    placeholder="Custom category"
+                    value={draftCategory}
+                  />
+                ) : null}
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Sort Order</span>

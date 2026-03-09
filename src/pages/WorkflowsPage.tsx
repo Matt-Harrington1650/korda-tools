@@ -29,6 +29,8 @@ const statusClassName = (status: string): string => {
   return 'text-slate-600';
 };
 
+const SCHEDULE_INTERVAL_PRESETS = [1, 5, 10, 15, 30, 60, 120] as const;
+
 export function WorkflowsPage() {
   const workflows = useWorkflowStore((state) => state.workflows);
   const selectedWorkflowId = useWorkflowStore((state) => state.selectedWorkflowId);
@@ -55,6 +57,7 @@ export function WorkflowsPage() {
   const [messageText, setMessageText] = useState('');
   const [scheduleKind, setScheduleKind] = useState<'interval' | 'cron'>('interval');
   const [scheduleIntervalMinutes, setScheduleIntervalMinutes] = useState('5');
+  const [scheduleIntervalMode, setScheduleIntervalMode] = useState<'preset' | 'custom'>('preset');
   const [scheduleCron, setScheduleCron] = useState('*/5 * * * *');
 
   useEffect(() => {
@@ -586,15 +589,45 @@ export function WorkflowsPage() {
                   <option value="cron">Cron</option>
                 </select>
                 {scheduleKind === 'interval' ? (
-                  <input
-                    className="rounded border border-slate-300 px-2 py-2 text-sm"
-                    onChange={(event) => {
-                      setScheduleIntervalMinutes(event.target.value);
-                    }}
-                    placeholder="Minutes"
-                    type="number"
-                    value={scheduleIntervalMinutes}
-                  />
+                  <div className="grid gap-2 md:grid-cols-[180px_1fr]">
+                    <select
+                      className="rounded border border-slate-300 px-2 py-2 text-sm"
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (next === 'custom') {
+                          setScheduleIntervalMode('custom');
+                          return;
+                        }
+                        setScheduleIntervalMode('preset');
+                        setScheduleIntervalMinutes(next);
+                      }}
+                      value={scheduleIntervalMode === 'custom' ? 'custom' : scheduleIntervalMinutes}
+                    >
+                      {SCHEDULE_INTERVAL_PRESETS.map((option) => (
+                        <option key={option} value={option}>
+                          Every {option} minute{option === 1 ? '' : 's'}
+                        </option>
+                      ))}
+                      <option value="custom">Custom</option>
+                    </select>
+                    {scheduleIntervalMode === 'custom' ? (
+                      <input
+                        className="rounded border border-slate-300 px-2 py-2 text-sm"
+                        min={1}
+                        onChange={(event) => {
+                          setScheduleIntervalMinutes(event.target.value);
+                        }}
+                        placeholder="Minutes"
+                        step={1}
+                        type="number"
+                        value={scheduleIntervalMinutes}
+                      />
+                    ) : (
+                      <p className="rounded border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-600">
+                        Interval: {scheduleIntervalMinutes} minute{scheduleIntervalMinutes === '1' ? '' : 's'}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <input
                     className="rounded border border-slate-300 px-2 py-2 text-sm"

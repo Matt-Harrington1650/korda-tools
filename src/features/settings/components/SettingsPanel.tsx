@@ -17,6 +17,14 @@ import { settingsFormSchema } from '../../../schemas/settingsSchemas';
 import { useSettingsStore } from '../store';
 import { helpCenterService } from '../../helpCenter/service';
 
+const TIMEOUT_PRESET_OPTIONS = [5000, 10000, 30000, 60000, 120000] as const;
+const STORAGE_PATH_PRESET_OPTIONS = ['./local-data', './local-data-dev', './local-data-test'] as const;
+const OPENAI_BASE_URL_PRESET_OPTIONS = ['https://api.openai.com/v1', 'http://localhost:11434/v1'] as const;
+const DEFAULT_MODEL_PRESET_OPTIONS = ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1', 'o3-mini'] as const;
+const CREDENTIAL_REF_PRESET_OPTIONS = ['OPENAI_API_KEY', 'WEBHOOK_SECRET', 'CUSTOM_HEADER_TOKEN'] as const;
+
+type PresetOrCustom = 'custom' | string;
+
 export function SettingsPanel() {
   const settings = useSettingsStore((state) => state.settings);
   const saveSettings = useSettingsStore((state) => state.saveSettings);
@@ -39,6 +47,7 @@ export function SettingsPanel() {
   const [developerModeLoading, setDeveloperModeLoading] = useState(true);
   const [developerModeError, setDeveloperModeError] = useState('');
   const [developerModeMessage, setDeveloperModeMessage] = useState('');
+  const [credentialIdOptions, setCredentialIdOptions] = useState<string[]>(() => [...CREDENTIAL_REF_PRESET_OPTIONS]);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const updaterServiceRef = useRef(createUpdaterService());
 
@@ -46,6 +55,8 @@ export function SettingsPanel() {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -69,6 +80,56 @@ export function SettingsPanel() {
       scheduler: settings.scheduler,
     });
   }, [reset, settings]);
+
+  const defaultTimeoutMs = watch('defaultTimeoutMs');
+  const localStoragePath = watch('localStoragePath');
+  const openaiBaseUrl = watch('providerDefaults.openaiBaseUrl');
+  const defaultModel = watch('providerDefaults.defaultModel');
+  const openaiApiKeyRef = watch('credentialReferences.openaiApiKeyRef');
+  const webhookSecretRef = watch('credentialReferences.webhookSecretRef');
+  const customHeaderRef = watch('credentialReferences.customHeaderRef');
+
+  useEffect(() => {
+    let mounted = true;
+    void listCredentialRefs()
+      .then((credentialRefs) => {
+        if (!mounted) {
+          return;
+        }
+        const options = new Set<string>([
+          ...CREDENTIAL_REF_PRESET_OPTIONS,
+          ...credentialRefs.map((entry) => entry.id),
+        ]);
+        setCredentialIdOptions(Array.from(options).sort((left, right) => left.localeCompare(right)));
+      })
+      .catch(() => {
+        if (mounted) {
+          setCredentialIdOptions([...CREDENTIAL_REF_PRESET_OPTIONS]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const timeoutPresetValue = TIMEOUT_PRESET_OPTIONS.includes(defaultTimeoutMs as (typeof TIMEOUT_PRESET_OPTIONS)[number])
+    ? String(defaultTimeoutMs)
+    : 'custom';
+  const storagePathPresetValue = STORAGE_PATH_PRESET_OPTIONS.includes(localStoragePath as (typeof STORAGE_PATH_PRESET_OPTIONS)[number])
+    ? localStoragePath
+    : 'custom';
+  const openAiBaseUrlPresetValue = OPENAI_BASE_URL_PRESET_OPTIONS.includes(
+    openaiBaseUrl as (typeof OPENAI_BASE_URL_PRESET_OPTIONS)[number],
+  )
+    ? openaiBaseUrl
+    : 'custom';
+  const defaultModelPresetValue = DEFAULT_MODEL_PRESET_OPTIONS.includes(defaultModel as (typeof DEFAULT_MODEL_PRESET_OPTIONS)[number])
+    ? defaultModel
+    : 'custom';
+  const openAiKeyRefPresetValue = credentialIdOptions.includes(openaiApiKeyRef) ? openaiApiKeyRef : 'custom';
+  const webhookRefPresetValue = credentialIdOptions.includes(webhookSecretRef) ? webhookSecretRef : 'custom';
+  const headerRefPresetValue = credentialIdOptions.includes(customHeaderRef) ? customHeaderRef : 'custom';
 
   useEffect(() => {
     let mounted = true;
@@ -211,30 +272,114 @@ export function SettingsPanel() {
 
           <label className="space-y-1">
             <span className="text-sm font-medium text-slate-700">Default Timeout (ms)</span>
-            <input
+            <select
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              type="number"
-              {...register('defaultTimeoutMs', { valueAsNumber: true })}
-            />
+              onChange={(event) => {
+                const next = event.target.value as PresetOrCustom;
+                if (next === 'custom') {
+                  setValue('defaultTimeoutMs', 10000, { shouldDirty: true, shouldValidate: true });
+                  return;
+                }
+                setValue('defaultTimeoutMs', Number(next), { shouldDirty: true, shouldValidate: true });
+              }}
+              value={timeoutPresetValue}
+            >
+              {TIMEOUT_PRESET_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option.toLocaleString()}
+                </option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+            {timeoutPresetValue === 'custom' ? (
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                type="number"
+                {...register('defaultTimeoutMs', { valueAsNumber: true })}
+              />
+            ) : null}
             <p className="text-xs text-rose-600">{errors.defaultTimeoutMs?.message}</p>
           </label>
         </div>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium text-slate-700">Local Storage Path (placeholder)</span>
-          <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('localStoragePath')} />
+          <span className="text-sm font-medium text-slate-700">Local Storage Path</span>
+          <select
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            onChange={(event) => {
+              const next = event.target.value as PresetOrCustom;
+              if (next === 'custom') {
+                setValue('localStoragePath', '', { shouldDirty: true, shouldValidate: true });
+                return;
+              }
+              setValue('localStoragePath', next, { shouldDirty: true, shouldValidate: true });
+            }}
+            value={storagePathPresetValue}
+          >
+            {STORAGE_PATH_PRESET_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+            <option value="custom">Custom</option>
+          </select>
+          {storagePathPresetValue === 'custom' ? (
+            <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('localStoragePath')} />
+          ) : null}
           <p className="text-xs text-rose-600">{errors.localStoragePath?.message}</p>
         </label>
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-1">
             <span className="text-sm font-medium text-slate-700">OpenAI Base URL</span>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('providerDefaults.openaiBaseUrl')} />
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              onChange={(event) => {
+                const next = event.target.value as PresetOrCustom;
+                if (next === 'custom') {
+                  setValue('providerDefaults.openaiBaseUrl', '', { shouldDirty: true, shouldValidate: true });
+                  return;
+                }
+                setValue('providerDefaults.openaiBaseUrl', next, { shouldDirty: true, shouldValidate: true });
+              }}
+              value={openAiBaseUrlPresetValue}
+            >
+              {OPENAI_BASE_URL_PRESET_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+            {openAiBaseUrlPresetValue === 'custom' ? (
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('providerDefaults.openaiBaseUrl')} />
+            ) : null}
             <p className="text-xs text-rose-600">{errors.providerDefaults?.openaiBaseUrl?.message}</p>
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium text-slate-700">Default Model</span>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('providerDefaults.defaultModel')} />
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              onChange={(event) => {
+                const next = event.target.value as PresetOrCustom;
+                if (next === 'custom') {
+                  setValue('providerDefaults.defaultModel', '', { shouldDirty: true, shouldValidate: true });
+                  return;
+                }
+                setValue('providerDefaults.defaultModel', next, { shouldDirty: true, shouldValidate: true });
+              }}
+              value={defaultModelPresetValue}
+            >
+              {DEFAULT_MODEL_PRESET_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+            {defaultModelPresetValue === 'custom' ? (
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('providerDefaults.defaultModel')} />
+            ) : null}
             <p className="text-xs text-rose-600">{errors.providerDefaults?.defaultModel?.message}</p>
           </label>
         </div>
@@ -244,15 +389,78 @@ export function SettingsPanel() {
           <div className="grid gap-3 md:grid-cols-3">
             <label className="space-y-1">
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">OpenAI Key Ref</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.openaiApiKeyRef')} />
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const next = event.target.value as PresetOrCustom;
+                  if (next === 'custom') {
+                    setValue('credentialReferences.openaiApiKeyRef', '', { shouldDirty: true, shouldValidate: true });
+                    return;
+                  }
+                  setValue('credentialReferences.openaiApiKeyRef', next, { shouldDirty: true, shouldValidate: true });
+                }}
+                value={openAiKeyRefPresetValue}
+              >
+                {credentialIdOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {openAiKeyRefPresetValue === 'custom' ? (
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.openaiApiKeyRef')} />
+              ) : null}
             </label>
             <label className="space-y-1">
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Webhook Ref</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.webhookSecretRef')} />
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const next = event.target.value as PresetOrCustom;
+                  if (next === 'custom') {
+                    setValue('credentialReferences.webhookSecretRef', '', { shouldDirty: true, shouldValidate: true });
+                    return;
+                  }
+                  setValue('credentialReferences.webhookSecretRef', next, { shouldDirty: true, shouldValidate: true });
+                }}
+                value={webhookRefPresetValue}
+              >
+                {credentialIdOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {webhookRefPresetValue === 'custom' ? (
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.webhookSecretRef')} />
+              ) : null}
             </label>
             <label className="space-y-1">
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Header Ref</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.customHeaderRef')} />
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const next = event.target.value as PresetOrCustom;
+                  if (next === 'custom') {
+                    setValue('credentialReferences.customHeaderRef', '', { shouldDirty: true, shouldValidate: true });
+                    return;
+                  }
+                  setValue('credentialReferences.customHeaderRef', next, { shouldDirty: true, shouldValidate: true });
+                }}
+                value={headerRefPresetValue}
+              >
+                {credentialIdOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {headerRefPresetValue === 'custom' ? (
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('credentialReferences.customHeaderRef')} />
+              ) : null}
             </label>
           </div>
         </div>

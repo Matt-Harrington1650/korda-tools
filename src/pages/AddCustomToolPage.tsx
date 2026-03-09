@@ -11,6 +11,7 @@ import {
 } from '../features/customToolsLibrary/toolTemplates';
 
 const stepTitles = ['Metadata', 'Template', 'Version', 'Files', 'Review'] as const;
+const CUSTOM_TOOL_CATEGORY_OPTIONS = ['cad', 'automation', 'documents', 'ai', 'standards', 'admin'] as const;
 
 export function AddCustomToolPage() {
   const navigate = useNavigate();
@@ -38,6 +39,9 @@ export function AddCustomToolPage() {
   }, [tagsText]);
 
   const fileValidationErrors = useMemo(() => validateFileSelection(files), [files]);
+  const categoryPresetValue = CUSTOM_TOOL_CATEGORY_OPTIONS.includes(category as (typeof CUSTOM_TOOL_CATEGORY_OPTIONS)[number])
+    ? category
+    : 'custom';
 
   const nextStep = (): void => {
     if (stepIndex === 0) {
@@ -238,13 +242,31 @@ export function AddCustomToolPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
               <span className="text-sm font-medium text-slate-700">Category</span>
-              <input
+              <select
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 onChange={(event) => {
-                  setCategory(event.target.value);
+                  const next = event.target.value;
+                  setCategory(next === 'custom' ? '' : next);
                 }}
-                value={category}
-              />
+                value={categoryPresetValue}
+              >
+                {CUSTOM_TOOL_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {categoryPresetValue === 'custom' ? (
+                <input
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  onChange={(event) => {
+                    setCategory(event.target.value);
+                  }}
+                  placeholder="Custom category"
+                  value={category}
+                />
+              ) : null}
             </label>
             <label className="space-y-1">
               <span className="text-sm font-medium text-slate-700">Tags</span>

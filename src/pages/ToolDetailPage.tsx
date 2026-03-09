@@ -10,6 +10,7 @@ import { createCredentialRef, listCredentialRefs, upsertCredentialRef } from '..
 import { useToolExecution } from '../features/tools/hooks';
 import { useToolRegistryStore } from '../features/tools/store/toolRegistryStore';
 import type { ExecutionGovernanceContext } from '../execution';
+import { CUSTOM_HEADER_NAME_OPTIONS, TOOL_CATEGORY_OPTIONS } from '../features/tools/forms/structuredInputOptions';
 import {
   createDefaultPluginConfig,
   mapLegacyToolToPluginConfig,
@@ -104,6 +105,7 @@ export function ToolDetailPage() {
     register,
     watch,
     reset,
+    setValue,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<ToolDetailFormValues>({
@@ -188,6 +190,16 @@ export function ToolDetailPage() {
   const selectedAuthType = watch('authType');
   const credentialMode = watch('credentialMode');
   const selectedCredentialRefId = watch('credentialRefId');
+  const selectedCategory = watch('category');
+  const selectedCustomHeaderName = watch('customHeaderName');
+  const categoryPresetValue = TOOL_CATEGORY_OPTIONS.includes(selectedCategory as (typeof TOOL_CATEGORY_OPTIONS)[number])
+    ? selectedCategory
+    : 'custom';
+  const customHeaderPresetValue = CUSTOM_HEADER_NAME_OPTIONS.includes(
+    selectedCustomHeaderName as (typeof CUSTOM_HEADER_NAME_OPTIONS)[number],
+  )
+    ? selectedCustomHeaderName
+    : 'custom';
   const selectedPluginManifest = pluginRegistry.getManifestByToolType(selectedToolType);
   const ConfigPanel = selectedPluginManifest?.ui?.ConfigPanel;
 
@@ -403,7 +415,24 @@ export function ToolDetailPage() {
             </label>
             <label className="space-y-1">
               <span className="text-sm font-medium text-slate-700">Category</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" {...register('category')} />
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setValue('category', next === 'custom' ? '' : next, { shouldDirty: true, shouldValidate: true });
+                }}
+                value={categoryPresetValue}
+              >
+                {TOOL_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {categoryPresetValue === 'custom' ? (
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Custom category" {...register('category')} />
+              ) : null}
               <p className="text-xs text-rose-600">{errors.category?.message}</p>
             </label>
           </div>
@@ -446,7 +475,28 @@ export function ToolDetailPage() {
           {selectedAuthType === 'custom_header' ? (
             <label className="space-y-1">
               <span className="text-sm font-medium text-slate-700">Custom Header Name</span>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="X-API-Key" {...register('customHeaderName')} />
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setValue('customHeaderName', next === 'custom' ? '' : next, { shouldDirty: true, shouldValidate: true });
+                }}
+                value={customHeaderPresetValue}
+              >
+                {CUSTOM_HEADER_NAME_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+              {customHeaderPresetValue === 'custom' ? (
+                <input
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="X-Client-Key"
+                  {...register('customHeaderName')}
+                />
+              ) : null}
               <p className="text-xs text-rose-600">{errors.customHeaderName?.message}</p>
             </label>
           ) : null}

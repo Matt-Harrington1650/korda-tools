@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useSophonStore } from '../../features/sophon/store/sophonStore';
 
+const SNAPSHOT_NAME_PRESETS = [
+  { value: 'daily', label: 'Daily Checkpoint' },
+  { value: 'pre-release', label: 'Pre-Release Checkpoint' },
+  { value: 'qa-smoke', label: 'QA Smoke Baseline' },
+  { value: 'custom', label: 'Custom Name' },
+] as const;
+
+type SnapshotNamePreset = (typeof SNAPSHOT_NAME_PRESETS)[number]['value'];
+
 export function SophonIndexPage() {
   const index = useSophonStore((store) => store.state.index);
   const rebuildIndex = useSophonStore((store) => store.rebuildIndex);
@@ -9,7 +18,22 @@ export function SophonIndexPage() {
   const createSnapshot = useSophonStore((store) => store.createSnapshot);
   const restoreSnapshot = useSophonStore((store) => store.restoreSnapshot);
   const publishSnapshot = useSophonStore((store) => store.publishSnapshot);
-  const [snapshotName, setSnapshotName] = useState('');
+  const [snapshotPreset, setSnapshotPreset] = useState<SnapshotNamePreset>('daily');
+  const [customSnapshotName, setCustomSnapshotName] = useState('');
+
+  const generateSnapshotName = (): string => {
+    const dayStamp = new Date().toISOString().slice(0, 10);
+    if (snapshotPreset === 'custom') {
+      return customSnapshotName.trim();
+    }
+    if (snapshotPreset === 'daily') {
+      return `snapshot-${dayStamp}`;
+    }
+    if (snapshotPreset === 'pre-release') {
+      return `pre-release-${dayStamp}`;
+    }
+    return `qa-smoke-${dayStamp}`;
+  };
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -45,21 +69,41 @@ export function SophonIndexPage() {
           </button>
           <div className="kt-panel-muted space-y-2 p-3">
             <label className="space-y-1">
-              <span className="kt-title-sm">Snapshot Name</span>
-              <input
-                className="kt-input"
+              <span className="kt-title-sm">Snapshot Naming Mode</span>
+              <select
+                className="kt-select"
                 onChange={(event) => {
-                  setSnapshotName(event.target.value);
+                  setSnapshotPreset(event.target.value as SnapshotNamePreset);
                 }}
-                placeholder="pre-release-checkpoint"
-                value={snapshotName}
-              />
+                value={snapshotPreset}
+              >
+                {SNAPSHOT_NAME_PRESETS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
+            {snapshotPreset === 'custom' ? (
+              <label className="space-y-1">
+                <span className="kt-title-sm">Custom Snapshot Name</span>
+                <input
+                  className="kt-input"
+                  onChange={(event) => {
+                    setCustomSnapshotName(event.target.value);
+                  }}
+                  placeholder="project-gate-2026-03-07"
+                  value={customSnapshotName}
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-[color:var(--kt-text-muted)]">Generated name: {generateSnapshotName()}</p>
+            )}
             <button
               className="kt-btn kt-btn-ghost w-full"
               onClick={() => {
-                createSnapshot(snapshotName);
-                setSnapshotName('');
+                createSnapshot(generateSnapshotName());
+                setCustomSnapshotName('');
               }}
               type="button"
             >
