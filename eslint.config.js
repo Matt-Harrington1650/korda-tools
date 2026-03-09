@@ -24,4 +24,22 @@ export default defineConfig([
       'react-hooks/set-state-in-effect': 'off',
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/tauri.ts', 'src/desktop/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@tauri-apps/*'],
+              message:
+                'Use src/lib/tauri.ts or src/desktop adapters instead of direct @tauri-apps imports.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])

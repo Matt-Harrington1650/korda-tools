@@ -203,6 +203,20 @@ fn read_sophon_api_key() -> Option<String> {
     }
 }
 
+fn resolve_positive_env_or_default(key: &str, default_value: &str) -> String {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .filter(|value| {
+            value
+                .parse::<u64>()
+                .map(|parsed| parsed > 0)
+                .unwrap_or(false)
+        })
+        .unwrap_or_else(|| default_value.to_string())
+}
+
 fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
     let script_path = resolve_worker_script_path(app)?;
     let app_data_dir = app
@@ -262,6 +276,12 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
     candidates.push(("python".to_string(), vec!["-u".to_string(), script_arg]));
 
     let mut startup_errors = Vec::new();
+    let bridge_init_timeout =
+        resolve_positive_env_or_default("SOPHON_BRIDGE_INIT_TIMEOUT_SEC", "180");
+    let bridge_client_init_timeout =
+        resolve_positive_env_or_default("SOPHON_BRIDGE_CLIENT_INIT_TIMEOUT_SEC", "180");
+    let ingest_pending_timeout =
+        resolve_positive_env_or_default("SOPHON_INGEST_PENDING_TIMEOUT_SEC", "900");
     for (program, args) in candidates {
         let mut command = Command::new(&program);
         command.args(&args);
@@ -276,7 +296,12 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
             command.env("NVIDIA_API_KEY", &api_key);
             command.env("NGC_API_KEY", &api_key);
         }
-        command.env("SOPHON_BRIDGE_INIT_TIMEOUT_SEC", "45");
+        command.env("SOPHON_BRIDGE_INIT_TIMEOUT_SEC", &bridge_init_timeout);
+        command.env(
+            "SOPHON_BRIDGE_CLIENT_INIT_TIMEOUT_SEC",
+            &bridge_client_init_timeout,
+        );
+        command.env("SOPHON_INGEST_PENDING_TIMEOUT_SEC", &ingest_pending_timeout);
         // Balanced defaults: private IPC remains enforced while NVIDIA hosted inferencing is allowed.
         command.env("APP_LLM_SERVERURL", "");
         command.env(

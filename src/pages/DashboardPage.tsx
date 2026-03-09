@@ -52,6 +52,35 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      <section className="kt-panel-elevated grid gap-4 p-5 lg:grid-cols-[1.4fr_1fr]">
+        <div>
+          <p className="kt-title-sm">Workspace Overview</p>
+          <h2 className="kt-title-xl mt-2">Run Tools. Manage Workflows. Query SOPHON.</h2>
+          <p className="mt-2 max-w-2xl text-sm text-[color:var(--kt-text-secondary)]">
+            Use SOPHON for knowledge retrieval and keep daily tool execution in one desktop workspace.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link className="kt-btn kt-btn-primary" to="/sophon/dashboard">
+              Open SOPHON
+            </Link>
+            <Link className="kt-btn kt-btn-secondary" to="/tools/new">
+              Add Custom Tool
+            </Link>
+            <Link className="kt-btn kt-btn-ghost" to="/workflows">
+              View Workflows
+            </Link>
+          </div>
+        </div>
+        <div className="kt-panel-muted p-4">
+          <p className="kt-title-sm">SOPHON Quick Guide</p>
+          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-[color:var(--kt-text-secondary)]">
+            <li>Add a source in `SOPHON &gt; Sources`.</li>
+            <li>Queue ingestion and watch job status.</li>
+            <li>Ask grounded questions in Retrieval Lab.</li>
+          </ol>
+        </div>
+      </section>
+
       <DashboardToolbar
         categories={categories}
         onCategoryChange={setCategory}
@@ -82,14 +111,14 @@ export function DashboardPage() {
           )}
         </section>
 
-        <aside className="rounded-lg border border-slate-200 bg-white p-5">
-          <h3 className="text-base font-semibold text-slate-900">Recent Activity</h3>
-          <p className="mt-1 text-sm text-slate-600">Latest registry events.</p>
+        <aside className="kt-panel p-5">
+          <h3 className="kt-title-lg">Recent Activity</h3>
+          <p className="mt-1 text-sm text-[color:var(--kt-text-muted)]">Latest registry and SOPHON-adjacent events.</p>
           <ul className="mt-4 space-y-3">
             {RECENT_ACTIVITY.map((item) => (
-              <li className="rounded-md border border-slate-200 p-3" key={item.id}>
-                <p className="text-sm text-slate-800">{item.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{item.time}</p>
+              <li className="kt-panel-muted p-3" key={item.id}>
+                <p className="text-sm text-[color:var(--kt-text-secondary)]">{item.label}</p>
+                <p className="mt-1 text-xs text-[color:var(--kt-text-muted)]">{item.time}</p>
               </li>
             ))}
           </ul>

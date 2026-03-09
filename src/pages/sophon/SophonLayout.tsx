@@ -14,12 +14,7 @@ const SOPHON_TABS = [
 ] as const;
 
 const navClass = ({ isActive }: { isActive: boolean }): string => {
-  return [
-    'rounded-md px-3 py-2 text-xs font-medium transition-colors',
-    isActive
-      ? 'bg-blue-700 text-white shadow-sm'
-      : 'border border-blue-100 bg-white text-blue-700 hover:bg-blue-50',
-  ].join(' ');
+  return `kt-tab ${isActive ? 'kt-tab-active' : ''}`;
 };
 
 export function SophonLayout() {
@@ -27,36 +22,36 @@ export function SophonLayout() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-blue-100 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="kt-panel-elevated p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Sophon</h2>
-            <p className="text-sm text-slate-600">
-              Offline knowledge intelligence module embedded inside KORDA Tools.
+            <h2 className="kt-title-xl">Sophon</h2>
+            <p className="mt-1 text-sm text-[color:var(--kt-text-secondary)]">
+              Knowledge ingestion, indexing, and retrieval for offline-first engineering workflows.
             </p>
           </div>
-          <div className="grid gap-2 text-xs text-slate-700 sm:grid-cols-4">
-            <div className="rounded border border-blue-200 bg-white px-3 py-2">
-              <p className="font-medium text-slate-900">Runtime</p>
-              <p className="capitalize">{state.runtime.status}</p>
+          <div className="grid gap-2 text-xs sm:grid-cols-4">
+            <div className="kt-kv">
+              <p className="kt-title-sm">Runtime</p>
+              <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--kt-text-primary)]">{state.runtime.status}</p>
             </div>
-            <div className="rounded border border-blue-200 bg-white px-3 py-2">
-              <p className="font-medium text-slate-900">Queue</p>
-              <p>{state.runtime.queueDepth}</p>
+            <div className="kt-kv">
+              <p className="kt-title-sm">Queue</p>
+              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.runtime.queueDepth}</p>
             </div>
-            <div className="rounded border border-blue-200 bg-white px-3 py-2">
-              <p className="font-medium text-slate-900">Index Docs</p>
-              <p>{state.index.docCount}</p>
+            <div className="kt-kv">
+              <p className="kt-title-sm">Index Docs</p>
+              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.index.docCount}</p>
             </div>
-            <div className="rounded border border-blue-200 bg-white px-3 py-2">
-              <p className="font-medium text-slate-900">Egress Blocks</p>
-              <p>{state.blockedEgressAttempts.length}</p>
+            <div className="kt-kv">
+              <p className="kt-title-sm">Egress Blocks</p>
+              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.blockedEgressAttempts.length}</p>
             </div>
           </div>
         </div>
       </section>
 
-      <nav className="flex flex-wrap gap-2">
+      <nav className="kt-panel flex flex-wrap gap-2 p-3">
         {SOPHON_TABS.map((tab) => (
           <NavLink key={tab.to} className={navClass} to={tab.to}>
             {tab.label}

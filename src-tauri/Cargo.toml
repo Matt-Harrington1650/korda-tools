@@ -1,10 +1,10 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Desktop workspace for Korda Tools and Sophon operations."
+authors = ["Matt Harrington"]
+license = "UNLICENSED"
+repository = "https://github.com/Matt-Harrington1650/korda-tools.git"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -30,3 +30,4 @@ sha2 = "0.10"
 uuid = { version = "1.18", features = ["v4", "serde"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "runtime-tokio"] }
 reqwest = { version = "0.12.24", default-features = false, features = ["rustls-tls"] }
+

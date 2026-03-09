@@ -1,8 +1,7 @@
 import { AppError } from '../../lib/errors';
 import { isTauriRuntime } from '../../lib/runtime';
+import { tauriInvoke } from '../../lib/tauri';
 import type { ObjectStoreFsBridge } from './LocalObjectStoreAdapter';
-
-type InvokeFunction = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 const inMemoryFiles = new Map<string, Uint8Array>();
 const inMemoryDirectories = new Set<string>();
@@ -42,8 +41,6 @@ class InMemoryObjectStoreFsBridge implements ObjectStoreFsBridge {
 }
 
 class TauriObjectStoreFsBridge implements ObjectStoreFsBridge {
-  private invokePromise: Promise<InvokeFunction> | null = null;
-
   async exists(path: string): Promise<boolean> {
     return this.invoke<boolean>('object_store_exists', { path });
   }
@@ -65,18 +62,7 @@ class TauriObjectStoreFsBridge implements ObjectStoreFsBridge {
   }
 
   private async invoke<T>(command: string, args: Record<string, unknown>): Promise<T> {
-    const invokeFn = await this.resolveInvoke();
-    return invokeFn<T>(command, args);
-  }
-
-  private async resolveInvoke(): Promise<InvokeFunction> {
-    if (!this.invokePromise) {
-      this.invokePromise = (async () => {
-        const tauriCore = await import('@tauri-apps/api/core');
-        return tauriCore.invoke as InvokeFunction;
-      })();
-    }
-    return this.invokePromise;
+    return tauriInvoke<T>(command, args);
   }
 }
 

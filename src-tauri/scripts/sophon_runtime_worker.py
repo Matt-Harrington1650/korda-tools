@@ -5,6 +5,7 @@ import asyncio
 import fnmatch
 import json
 import logging
+import multiprocessing as mp
 import os
 import sys
 import threading
@@ -20,6 +21,23 @@ log = logging.getLogger("sophon-runtime")
 STAGES = ["enumerate", "classify", "extract", "normalize", "chunk", "embed", "index", "validate", "publish"]
 
 
+def configure_child_python_executable() -> None:
+    """
+    Keep spawned Python children on the same interpreter as this worker.
+    On Windows, third-party multiprocessing code can otherwise drift to the
+    base system Python and fail bridge imports.
+    """
+    os.environ["PYTHONEXECUTABLE"] = sys.executable
+    if os.name == "nt":
+        try:
+            mp.set_executable(sys.executable)
+        except Exception:
+            pass
+
+
+configure_child_python_executable()
+
+
 def now() -> str:
     return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
 
@@ -33,6 +51,20 @@ def intv(value: Any, fallback: int) -> int:
         return int(value)
     except Exception:
         return fallback
+
+
+def elapsed_seconds_since(timestamp: Any) -> float | None:
+    raw = str(timestamp or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    delta = datetime.now(tz=UTC) - parsed.astimezone(UTC)
+    return max(0.0, delta.total_seconds())
 
 
 def normalize_payload(payload: Any) -> dict[str, Any]:
@@ -299,6 +331,7 @@ class Runtime:
             self.state["logs"] = [{"id": rid("log"), "ts": now(), "severity": "warn", "source": "index", "message": f"Index refresh failed: {exc}"}, *self.state["logs"]][:15000]
 
     def refresh_jobs(self) -> None:
+        pending_timeout_sec = max(60, intv(os.environ.get("SOPHON_INGEST_PENDING_TIMEOUT_SEC"), 900))
         for job in self.state["jobs"]:
             if job["status"] in {"completed", "failed", "cancelled", "paused"}:
                 continue
@@ -308,14 +341,24 @@ class Runtime:
             try:
                 payload = self.bridge.task(task_id)
             except Exception as exc:
-                job["status"] = "failed"; job["failureReason"] = str(exc); job["endedAt"] = now(); continue
+                job["status"] = "failed"; job["failureReason"] = str(exc); job["endedAt"] = now(); self.task_for_job.pop(job["id"], None); continue
             state = payload.get("state")
             dstat = ((payload.get("nv_ingest_status") or {}).get("document_wise_status") or {})
             total = max(1, len(dstat))
             done = sum(1 for v in dstat.values() if str(v).lower() in {"completed", "finished", "done", "success"})
             progress = int((done / total) * 100)
             self.stage(job, "enumerate", "completed", 100); self.stage(job, "classify", "completed", 100)
-            if state == "PENDING":
+            if state in {"PENDING", "RUNNING", "STARTED", "IN_PROGRESS"}:
+                elapsed = elapsed_seconds_since(job.get("startedAt"))
+                if elapsed is not None and elapsed > pending_timeout_sec:
+                    timeout_reason = (
+                        f"Ingestion task remained pending for {int(elapsed)}s "
+                        f"(timeout={pending_timeout_sec}s). Check NV-Ingest task execution, source parsing, and dependencies."
+                    )
+                    job["status"] = "failed"; job["failureReason"] = timeout_reason; job["endedAt"] = now()
+                    self.task_for_job.pop(job["id"], None)
+                    self.append_log("warn", "ingestion", timeout_reason)
+                    continue
                 job["status"] = "running"; job["currentStage"] = "extract"; self.stage(job, "extract", "running", max(2, progress)); job["discoveredFiles"] = total; job["processedDocuments"] = done
             elif state == "FINISHED":
                 job["status"] = "completed"; job["endedAt"] = now(); job["currentStage"] = "publish"
@@ -325,9 +368,10 @@ class Runtime:
                 job["processedDocuments"] = intv(result.get("documents_completed"), total)
                 job["failedDocuments"] = len(result.get("failed_documents") or [])
                 job["producedChunks"] = max(0, intv(result.get("batches_completed"), 0))
+                self.task_for_job.pop(job["id"], None)
                 self.refresh_index()
             elif state == "FAILED":
-                job["status"] = "failed"; job["failureReason"] = str((payload.get("result") or {}).get("message") or "Ingestion failed."); job["endedAt"] = now()
+                job["status"] = "failed"; job["failureReason"] = str((payload.get("result") or {}).get("message") or "Ingestion failed."); job["endedAt"] = now(); self.task_for_job.pop(job["id"], None)
         self.state["runtime"]["queueDepth"] = sum(1 for j in self.state["jobs"] if j["status"] == "queued")
         self.state["runtime"]["activeWorkers"] = sum(1 for j in self.state["jobs"] if j["status"] == "running")
         self.state["runtime"]["diskUsagePct"] = max(1, min(99, intv(self.state["index"]["chunkCount"] / 32, 1)))
@@ -937,10 +981,34 @@ class Runtime:
                 return self.handle("record_blocked_egress_attempt", {"target": query, "reason": "SOPHON_EGRESS_BLOCK_REQUIRED"})
             passages: list[dict[str, Any]] = []
             answer = ""
-            if self.bridge.ready:
-                payload = self.bridge.search(query, intv(self.state["tuning"]["retrieverTopK"], 20), bool(self.state["tuning"]["rerankerEnabled"]), float(self.state["tuning"]["scoreThreshold"]))
-                for item in (payload.get("results") or [])[: max(1, intv(self.state["tuning"]["retrieverTopK"], 20))]:
-                    passages.append({"sourceName": str(item.get("document_name") or "unknown"), "score": float(item.get("score") or 0.0), "content": str(item.get("content") or "")[:3000]})
+            enabled_source_ids = {
+                str(source.get("id") or "")
+                for source in (self.state.get("sources") or [])
+                if bool(source.get("enabled", True))
+            }
+            completed_source_ids = {
+                str(job.get("sourceId") or "")
+                for job in (self.state.get("jobs") or [])
+                if str(job.get("status") or "").lower() == "completed"
+            }
+            queryable_source_ids = enabled_source_ids.intersection(completed_source_ids)
+
+            if not enabled_source_ids:
+                answer = "No enabled sources are configured. Add a source in Sophon -> Sources before querying."
+            elif not queryable_source_ids:
+                answer = "No enabled sources are indexed yet. Run ingestion and wait for a completed job before querying."
+            elif not self.bridge.ready:
+                answer = self.bridge.err or "Retrieval backend is unavailable. Run Runtime Health and resolve blockers."
+                self.append_log("warn", "retrieval", answer)
+            else:
+                try:
+                    payload = self.bridge.search(query, intv(self.state["tuning"]["retrieverTopK"], 20), bool(self.state["tuning"]["rerankerEnabled"]), float(self.state["tuning"]["scoreThreshold"]))
+                    for item in (payload.get("results") or [])[: max(1, intv(self.state["tuning"]["retrieverTopK"], 20))]:
+                        passages.append({"sourceName": str(item.get("document_name") or "unknown"), "score": float(item.get("score") or 0.0), "content": str(item.get("content") or "")[:3000]})
+                except Exception as exc:
+                    answer = f"Retrieval request failed: {exc}"
+                    self.append_log("warn", "retrieval", answer)
+
             answer = answer or (f"Sophon retrieved {len(passages)} grounded passage(s) for '{query}'." if passages else f"No indexed passages were found for '{query}'.")
             self.state["lastRetrieval"] = {"query": query, "answer": answer, "passages": passages, "generatedAt": now()}; self.save(); return self.state
         if method == "record_blocked_egress_attempt":

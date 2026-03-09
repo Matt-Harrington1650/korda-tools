@@ -13,11 +13,11 @@ export function SophonIndexPage() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      <section className="rounded-lg border border-slate-200 bg-white p-4 lg:col-span-1">
-        <h3 className="text-base font-semibold text-slate-900">Index Controls</h3>
+      <section className="kt-panel p-4 lg:col-span-1">
+        <h3 className="kt-title-lg">Index Controls</h3>
         <div className="mt-3 space-y-2">
           <button
-            className="w-full rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
+            className="kt-btn kt-btn-primary w-full"
             onClick={() => {
               rebuildIndex();
             }}
@@ -26,7 +26,7 @@ export function SophonIndexPage() {
             Rebuild Index
           </button>
           <button
-            className="w-full rounded border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+            className="kt-btn kt-btn-secondary w-full"
             onClick={() => {
               compactIndex();
             }}
@@ -35,7 +35,7 @@ export function SophonIndexPage() {
             Compact Index
           </button>
           <button
-            className="w-full rounded border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+            className="kt-btn kt-btn-secondary w-full"
             onClick={() => {
               validateIndex();
             }}
@@ -43,11 +43,11 @@ export function SophonIndexPage() {
           >
             Validate Index
           </button>
-          <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+          <div className="kt-panel-muted space-y-2 p-3">
             <label className="space-y-1">
-              <span className="text-xs font-medium uppercase text-slate-600">Snapshot Name</span>
+              <span className="kt-title-sm">Snapshot Name</span>
               <input
-                className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                className="kt-input"
                 onChange={(event) => {
                   setSnapshotName(event.target.value);
                 }}
@@ -56,7 +56,7 @@ export function SophonIndexPage() {
               />
             </label>
             <button
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+              className="kt-btn kt-btn-ghost w-full"
               onClick={() => {
                 createSnapshot(snapshotName);
                 setSnapshotName('');
@@ -69,59 +69,61 @@ export function SophonIndexPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 lg:col-span-2">
-        <h3 className="text-base font-semibold text-slate-900">Index Stats</h3>
+      <section className="kt-panel p-4 lg:col-span-2">
+        <h3 className="kt-title-lg">Index Stats</h3>
         <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">Documents: {index.docCount}</p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">Chunks: {index.chunkCount}</p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">Embedding: {index.embeddingModel}</p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">Revision: {index.revision}</p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">Integrity: {index.integrityStatus}</p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+          <p className="kt-kv">Documents: {index.docCount}</p>
+          <p className="kt-kv">Chunks: {index.chunkCount}</p>
+          <p className="kt-kv">Embedding: {index.embeddingModel}</p>
+          <p className="kt-kv">Revision: {index.revision}</p>
+          <p className="kt-kv">Integrity: {index.integrityStatus}</p>
+          <p className="kt-kv">
             Active Snapshot: {index.activeSnapshotId ?? 'None'}
           </p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-2">
+          <p className="kt-kv sm:col-span-2">
             Last Updated: {index.lastUpdatedAt ? new Date(index.lastUpdatedAt).toLocaleString() : 'N/A'}
           </p>
-          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-2">
+          <p className="kt-kv sm:col-span-2">
             Last Validated: {index.lastValidatedAt ? new Date(index.lastValidatedAt).toLocaleString() : 'N/A'}
           </p>
         </div>
 
-        <h4 className="mt-4 text-sm font-semibold text-slate-900">Snapshots</h4>
+        <h4 className="mt-4 text-sm font-semibold text-[color:var(--kt-text-primary)]">Snapshots</h4>
         <div className="mt-2 space-y-2">
           {index.snapshots.length === 0 ? (
-            <p className="rounded border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            <p className="kt-panel-muted border-dashed px-3 py-2 text-sm text-[color:var(--kt-text-muted)]">
               No snapshots yet.
             </p>
           ) : null}
           {index.snapshots.map((snapshot) => (
-            <article key={snapshot.id} className="rounded border border-slate-200 p-3">
+            <article key={snapshot.id} className="kt-panel-muted p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="font-medium text-slate-900">{snapshot.name}</p>
-                  <p className="text-xs text-slate-600">{new Date(snapshot.createdAt).toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-[color:var(--kt-text-primary)]">{snapshot.name}</p>
+                  <p className="text-xs text-[color:var(--kt-text-muted)]">{new Date(snapshot.createdAt).toLocaleString()}</p>
                 </div>
-                <button
-                  className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                  onClick={() => {
-                    restoreSnapshot(snapshot.id);
-                  }}
-                  type="button"
-                >
-                  Restore
-                </button>
-                <button
-                  className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                  onClick={() => {
-                    publishSnapshot(snapshot.id);
-                  }}
-                  type="button"
-                >
-                  Publish
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    className="kt-btn kt-btn-secondary"
+                    onClick={() => {
+                      restoreSnapshot(snapshot.id);
+                    }}
+                    type="button"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    className="kt-btn kt-btn-secondary"
+                    onClick={() => {
+                      publishSnapshot(snapshot.id);
+                    }}
+                    type="button"
+                  >
+                    Publish
+                  </button>
+                </div>
               </div>
-              <p className="mt-2 text-xs text-slate-700">
+              <p className="mt-2 text-xs text-[color:var(--kt-text-secondary)]">
                 {snapshot.docCount} docs / {snapshot.chunkCount} chunks / {snapshot.embeddingModel}
               </p>
             </article>

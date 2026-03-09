@@ -24,13 +24,13 @@ export function SophonModelsTuningPage() {
     };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="text-base font-semibold text-slate-900">Models & Tuning</h3>
+    <section className="kt-panel p-4">
+      <h3 className="kt-title-lg">Models & Tuning</h3>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Embedding Model</span>
+          <span className="kt-title-sm">Embedding Model</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             onChange={(event) => {
               updateTuning({ embeddingModel: event.target.value });
             }}
@@ -38,9 +38,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Retriever Top-K</span>
+          <span className="kt-title-sm">Retriever Top-K</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             min={1}
             onChange={onNumber('retrieverTopK')}
             type="number"
@@ -48,9 +48,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Score Threshold</span>
+          <span className="kt-title-sm">Score Threshold</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             max={1}
             min={0}
             onChange={onNumber('scoreThreshold')}
@@ -60,9 +60,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Reranker Threshold</span>
+          <span className="kt-title-sm">Reranker Threshold</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             max={1}
             min={0}
             onChange={onNumber('rerankerThreshold')}
@@ -72,9 +72,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Context Window Tokens</span>
+          <span className="kt-title-sm">Context Window Tokens</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             min={1024}
             onChange={onNumber('contextWindowTokens')}
             type="number"
@@ -82,9 +82,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Response Max Tokens</span>
+          <span className="kt-title-sm">Response Max Tokens</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             min={64}
             onChange={onNumber('responseMaxTokens')}
             type="number"
@@ -92,9 +92,9 @@ export function SophonModelsTuningPage() {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium uppercase text-slate-600">Max Ingestion Workers</span>
+          <span className="kt-title-sm">Max Ingestion Workers</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="kt-input"
             min={1}
             onChange={onNumber('maxIngestionWorkers')}
             type="number"
@@ -103,8 +103,9 @@ export function SophonModelsTuningPage() {
         </label>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <label className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
           <input
+            className="kt-checkbox"
             checked={tuning.rerankerEnabled}
             onChange={(event) => {
               updateTuning({ rerankerEnabled: event.target.checked });
@@ -113,8 +114,9 @@ export function SophonModelsTuningPage() {
           />
           Enable reranker
         </label>
-        <label className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
           <input
+            className="kt-checkbox"
             checked={tuning.explainRetrieval}
             onChange={(event) => {
               updateTuning({ explainRetrieval: event.target.checked });
@@ -123,8 +125,9 @@ export function SophonModelsTuningPage() {
           />
           Explain retrieval by default
         </label>
-        <label className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
           <input
+            className="kt-checkbox"
             checked={tuning.forceCpuOnly}
             onChange={(event) => {
               updateTuning({ forceCpuOnly: event.target.checked });

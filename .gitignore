@@ -26,3 +26,13 @@ dist-ssr
 
 .env
 .env.local
+
+# Local Python runtimes (Sophon/KORDA-RAG bridge)
+.sophon-py/
+.sophon-py312/
+.venv/
+venv/
+
+# Python cache artifacts
+__pycache__/
+*.pyc

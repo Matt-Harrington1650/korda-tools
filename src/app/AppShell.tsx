@@ -61,115 +61,93 @@ export function AppShell() {
     }
   };
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }): string =>
+    `kt-nav-link ${isActive ? 'kt-nav-link-active' : ''}`;
+
   return (
-    <div className="relative min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-7xl">
-        <aside className="hidden w-64 border-r border-slate-200 bg-white p-4 md:block">
-          <div className="mb-6">
-            <h1 className="text-lg font-semibold">KORDA TOOLS</h1>
-            <p className="text-sm text-slate-500">Local, offline-first workspace</p>
+    <div className="relative min-h-screen text-slate-100">
+      <div className="mx-auto flex min-h-screen max-w-[1500px]">
+        <aside className="hidden w-[268px] flex-col border-r border-slate-700/60 bg-[color:var(--kt-bg-sidebar)] px-4 pb-6 pt-5 md:flex">
+          <div className="kt-panel-muted mb-4 px-4 py-3">
+            <h1 className="kt-title-lg">Korda Tools</h1>
+            <p className="mt-1 text-xs text-[color:var(--kt-text-muted)]">Desktop engineering workspace</p>
           </div>
-          <nav className="flex flex-col gap-2">
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              end
-              to="/"
-            >
+
+          <p className="kt-title-sm mb-2 px-1">Core Workflows</p>
+          <nav className="flex flex-col gap-1.5">
+            <NavLink className={navLinkClass} end to="/">
               Dashboard
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              end
-              to="/tools"
-            >
+            <NavLink className={navLinkClass} end to="/tools">
               Tools Library
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/tools/new"
-            >
+            <NavLink className={navLinkClass} to="/tools/new">
               Add Custom Tool
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/workflows"
-            >
+            <NavLink className={navLinkClass} to="/workflows">
               Workflows
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/chat"
-            >
+            <NavLink className={navLinkClass} to="/chat">
               Chat
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-blue-700 text-white' : 'text-blue-700 hover:bg-blue-50'}`
-              }
-              to="/sophon"
-            >
+            <NavLink className={navLinkClass} to="/sophon">
               Sophon
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/records"
-            >
+            <NavLink className={navLinkClass} to="/records">
               Records
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/help"
-            >
+          </nav>
+
+          <p className="kt-title-sm mb-2 mt-5 px-1">Support</p>
+          <nav className="flex flex-col gap-1.5">
+            <NavLink className={navLinkClass} to="/help">
               Start Here
             </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                `rounded px-3 py-2 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`
-              }
-              to="/settings"
-            >
+            <NavLink className={navLinkClass} to="/settings">
               Settings
             </NavLink>
           </nav>
+
+          <div className="kt-panel-muted mt-auto px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[color:var(--kt-text-muted)]">
+              Mode
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--kt-text-secondary)]">Offline-first desktop runtime</p>
+          </div>
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col">
-          <header className="flex h-14 items-center border-b border-slate-200 bg-white px-4">
-            <span className="text-sm font-medium text-slate-600">KORDA TOOLS Desktop</span>
+          <header className="flex h-[60px] items-center justify-between border-b border-slate-700/60 bg-[color:var(--kt-surface-1)] px-4 sm:px-6">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--kt-text-muted)]">
+                Korda Tools
+              </span>
+              <p className="mt-1 text-sm text-[color:var(--kt-text-secondary)]">Operator Console</p>
+            </div>
+            <div className="hidden items-center gap-2 md:flex">
+              <span className="kt-chip">Desktop</span>
+              <span className="kt-chip kt-chip-accent">Secure Local</span>
+            </div>
           </header>
-          <main className="flex-1 p-4 md:p-6">
+          <main className="flex-1 p-4 sm:p-6">
             <Outlet />
           </main>
         </div>
       </div>
 
       {welcomeOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
-          <section className="w-full max-w-lg space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <section className="kt-panel-elevated w-full max-w-xl space-y-4 p-6">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">Welcome to KORDA TOOLS</h2>
-              <p className="mt-2 text-sm text-slate-600">
+              <h2 className="kt-title-xl">Welcome to Korda Tools</h2>
+              <p className="mt-2 text-sm text-[color:var(--kt-text-secondary)]">
                 This app manages local tool metadata, workflow automation, and versioned custom tool packages. Start with the Help Center for setup and workflow guidance.
               </p>
             </div>
-            {welcomeError ? <p className="text-sm text-rose-700">{welcomeError}</p> : null}
+            {welcomeError ? <p className="text-sm text-[color:var(--kt-danger)]">{welcomeError}</p> : null}
             <div className="flex flex-wrap justify-end gap-2">
               <button
-                className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className="kt-btn kt-btn-ghost"
                 onClick={() => {
                   void closeWelcome();
                 }}
@@ -178,7 +156,7 @@ export function AppShell() {
                 Dismiss
               </button>
               <button
-                className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                className="kt-btn kt-btn-primary"
                 onClick={() => {
                   void openStartHere();
                 }}
@@ -193,3 +171,4 @@ export function AppShell() {
     </div>
   );
 }
+

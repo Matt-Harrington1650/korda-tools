@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-03-05T22:15:09.407Z",
+  "generatedAt": "2026-03-07T14:34:30.709Z",
   "snapshots": [
     {
-      "id": "snapshot-1cc271a8-b307-4ed4-8133-3af4e743b252",
+      "id": "snapshot-4f0924e7-d4a8-418d-87f7-000123d32da2",
       "name": "S2-after-second-pass",
-      "createdAt": "2026-03-05T22:15:09.407Z",
+      "createdAt": "2026-03-07T14:34:30.705Z",
       "docCount": 28,
       "chunkCount": 155,
       "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2"
     },
     {
-      "id": "snapshot-bb2ec5e5-06a7-4fbe-a689-2d25db6228c9",
+      "id": "snapshot-29ac6310-6b83-4a4d-820a-16bee113a974",
       "name": "S1-baseline",
-      "createdAt": "2026-03-05T22:15:09.405Z",
+      "createdAt": "2026-03-07T14:34:30.695Z",
       "docCount": 14,
       "chunkCount": 84,
       "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2"
@@ -25,7 +25,7 @@
   "countsAfterRestore": {
     "docCount": 14,
     "chunkCount": 84,
-    "activeSnapshotId": "snapshot-bb2ec5e5-06a7-4fbe-a689-2d25db6228c9"
+    "activeSnapshotId": "snapshot-29ac6310-6b83-4a4d-820a-16bee113a974"
   },
   "restoreMatchedBaseline": true,
   "invalidRestoreNoOp": true,

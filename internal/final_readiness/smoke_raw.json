@@ -1,0 +1,237 @@
+{
+  "started_at": 1772896406.2935908,
+  "profile": "C:\\code\\ai-tool-hub\\internal\\testing\\runtime_profile_smoke",
+  "seed": "C:\\code\\ai-tool-hub\\internal\\testing\\sophon_rag_seed\\smoke_test_knowledge.md",
+  "readiness_initial": {
+    "state": "blocked",
+    "checks": [
+      {
+        "id": "python_runtime",
+        "status": "pass",
+        "message": "Python 3.12.7 is compatible."
+      },
+      {
+        "id": "torch_runtime",
+        "status": "pass",
+        "message": "PyTorch is installed."
+      },
+      {
+        "id": "api_key",
+        "status": "fail",
+        "message": "Hosted inference is enabled but no NVIDIA API key is configured."
+      },
+      {
+        "id": "bridge_init",
+        "status": "pass",
+        "message": "NVIDIA RAG bridge loaded successfully."
+      },
+      {
+        "id": "ingestor_dependencies",
+        "status": "pass",
+        "message": "Ingestor dependencies are healthy."
+      },
+      {
+        "id": "rag_dependencies",
+        "status": "warn",
+        "message": "Optional retrieval components are degraded (core retrieval remains available)."
+      },
+      {
+        "id": "collection_bootstrap",
+        "status": "pass",
+        "message": "Default collection 'multimodal_data' is ready."
+      },
+      {
+        "id": "source_setup",
+        "status": "warn",
+        "message": "No sources configured yet. Ingestion is not ready."
+      }
+    ]
+  },
+  "readiness_after_offline": {
+    "state": "degraded",
+    "checks": [
+      {
+        "id": "python_runtime",
+        "status": "pass",
+        "message": "Python 3.12.7 is compatible."
+      },
+      {
+        "id": "torch_runtime",
+        "status": "pass",
+        "message": "PyTorch is installed."
+      },
+      {
+        "id": "api_key",
+        "status": "warn",
+        "message": "No API key is configured. Hosted inference will remain unavailable."
+      },
+      {
+        "id": "bridge_init",
+        "status": "pass",
+        "message": "NVIDIA RAG bridge loaded successfully."
+      },
+      {
+        "id": "ingestor_dependencies",
+        "status": "pass",
+        "message": "Ingestor dependencies are healthy."
+      },
+      {
+        "id": "rag_dependencies",
+        "status": "warn",
+        "message": "Optional retrieval components are degraded (core retrieval remains available)."
+      },
+      {
+        "id": "collection_bootstrap",
+        "status": "pass",
+        "message": "Default collection 'multimodal_data' is ready."
+      },
+      {
+        "id": "source_setup",
+        "status": "warn",
+        "message": "No sources configured yet. Ingestion is not ready."
+      }
+    ]
+  },
+  "ingest_job": {
+    "id": "job-d20647e5-8ba7-4a22-b79a-28d1ac7aeb66",
+    "sourceId": "source-2f4ea424-ac34-474f-a779-780285d4f40f",
+    "sourceName": "SMOKE_ATLAS",
+    "status": "failed",
+    "currentStage": "extract",
+    "stages": [
+      {
+        "stage": "enumerate",
+        "status": "completed",
+        "progressPct": 100,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "classify",
+        "status": "completed",
+        "progressPct": 100,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "extract",
+        "status": "running",
+        "progressPct": 2,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "normalize",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "chunk",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "embed",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "index",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "validate",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      },
+      {
+        "stage": "publish",
+        "status": "queued",
+        "progressPct": 0,
+        "filesProcessed": 0,
+        "chunksProduced": 0,
+        "errorCount": 0
+      }
+    ],
+    "checkpoints": [
+      {
+        "stage": "enumerate",
+        "cursor": "task_id:423a159a-460a-4f15-b5b5-3fc3afcd3b5c",
+        "persistedAt": "2026-03-07T15:14:47.050927Z"
+      }
+    ],
+    "options": {
+      "dryRun": false,
+      "safeMode": false,
+      "maxWorkers": 2
+    },
+    "startedAt": "2026-03-07T15:14:45.713556Z",
+    "retries": 0,
+    "discoveredFiles": 1,
+    "processedDocuments": 0,
+    "failedDocuments": 0,
+    "producedChunks": 0,
+    "blockedByPolicy": false,
+    "validation": {
+      "integrityPass": true,
+      "retrievalSanityPass": true,
+      "orphanedChunks": 0,
+      "missingMetadataRows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    "failureReason": "Ingestion task remained pending for 301s (timeout=300s). Check NV-Ingest task execution, source parsing, and dependencies.",
+    "endedAt": "2026-03-07T15:19:47.335402Z"
+  },
+  "retrieval": {
+    "query": "What is the service voltage for Atlas Retrofit?",
+    "answer": "No enabled sources are indexed yet. Run ingestion and wait for a completed job before querying.",
+    "passage_count": 0,
+    "passages": []
+  },
+  "final_state": {
+    "runtime": {
+      "transport": "ipc_stdio",
+      "engineMode": "embedded_nvidia",
+      "status": "degraded",
+      "gpuAvailable": true,
+      "modelLoaded": true,
+      "vectorStoreReady": true,
+      "diskUsagePct": 1,
+      "queueDepth": 0,
+      "activeWorkers": 0,
+      "lastHealthCheckAt": "2026-03-07T15:19:47.357426Z"
+    },
+    "index": {
+      "docCount": 1,
+      "chunkCount": 1,
+      "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+      "integrityStatus": "healthy",
+      "revision": 1,
+      "snapshots": [],
+      "lastUpdatedAt": "2026-03-07T15:14:45.702023Z"
+    },
+    "source_count": 1,
+    "job_count": 1
+  },
+  "finished_at": 1772896787.3643734
+}

@@ -39,21 +39,21 @@ export function SophonBackupRestorePage() {
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="text-base font-semibold text-slate-900">Backup / Restore</h3>
-      <p className="mt-1 text-sm text-slate-600">
+    <section className="kt-panel p-4">
+      <h3 className="kt-title-lg">Backup / Restore</h3>
+      <p className="mt-1 text-sm text-[color:var(--kt-text-secondary)]">
         Export or restore Sophon configuration, source definitions, index metadata, and audit state.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
-          className="rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
+          className="kt-btn kt-btn-primary"
           onClick={handleExport}
           type="button"
         >
           Export Backup
         </button>
         <button
-          className="rounded border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+          className="kt-btn kt-btn-secondary"
           onClick={() => {
             handleImport(true);
           }}
@@ -62,14 +62,14 @@ export function SophonBackupRestorePage() {
           Validate Import (Dry-Run)
         </button>
         <button
-          className="rounded border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+          className="kt-btn kt-btn-secondary"
           onClick={handleLogsExport}
           type="button"
         >
           Export Logs
         </button>
         <button
-          className="rounded border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="kt-btn kt-btn-ghost"
           onClick={() => {
             handleImport(false);
           }}
@@ -79,16 +79,16 @@ export function SophonBackupRestorePage() {
         </button>
       </div>
       <label className="mt-3 block space-y-1">
-        <span className="text-xs font-medium uppercase text-slate-600">Backup JSON</span>
+        <span className="kt-title-sm">Backup JSON</span>
         <textarea
-          className="h-72 w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs"
+          className="kt-textarea h-72 font-mono text-xs"
           onChange={(event) => {
             setPayload(event.target.value);
           }}
           value={payload}
         />
       </label>
-      {message ? <p className="mt-2 text-sm text-slate-700">{message}</p> : null}
+      {message ? <p className="mt-2 text-sm text-[color:var(--kt-text-secondary)]">{message}</p> : null}
     </section>
   );
 }
