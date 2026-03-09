@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-03-05T22:15:07.877Z",
+  "dryRun": {
+    "ok": true,
+    "message": "Dry-run validation passed."
+  },
+  "tampered": {
+    "ok": false,
+    "message": "Backup payload failed schema validation."
+  },
+  "stateUnchangedAfterTamper": true,
+  "restore": {
+    "ok": true,
+    "message": "Backup restored successfully."
+  },
+  "postRestoreAnswer": "Sophon retrieved 1 grounded passage(s) for \"post-restore retrieval check\".",
+  "postRestorePassages": 1
+}

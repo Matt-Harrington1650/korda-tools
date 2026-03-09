@@ -204,6 +204,25 @@ export const sophonLogEntrySchema = z.object({
   message: z.string().trim().min(1).max(1000),
 });
 
+export const sophonRuntimeReadinessCheckSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(1).max(200),
+  status: z.enum(['pass', 'warn', 'fail']),
+  blocking: z.boolean(),
+  message: z.string().trim().min(1).max(2000),
+  remediation: z.array(z.string().trim().min(1).max(500)).max(20),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const sophonRuntimeReadinessReportSchema = z.object({
+  generatedAt: z.string().datetime(),
+  state: z.enum(['ready', 'degraded', 'blocked']),
+  summary: z.string().trim().min(1).max(2000),
+  blockerCount: z.number().int().min(0).max(1000),
+  warningCount: z.number().int().min(0).max(1000),
+  checks: z.array(sophonRuntimeReadinessCheckSchema).max(100),
+});
+
 export const sophonSystemStateSchema = z.object({
   version: z.literal(sophonSchemaVersion),
   runtime: z.object({
@@ -252,6 +271,7 @@ export const sophonSystemStateSchema = z.object({
   logs: z.array(sophonLogEntrySchema).max(15000),
   audit: z.array(sophonAuditEventSchema).max(10000),
   activity: z.array(z.string().trim().min(1).max(500)).max(2000),
+  runtimeReadiness: sophonRuntimeReadinessReportSchema.optional(),
   lastRetrieval: sophonRetrievalResultSchema.optional(),
 });
 

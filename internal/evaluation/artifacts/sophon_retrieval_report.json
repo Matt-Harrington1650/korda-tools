@@ -1,0 +1,37 @@
+{
+  "module": "Sophon Retrieval Lab",
+  "generatedAt": "2026-03-05T22:15:07.839Z",
+  "retrieval": {
+    "query": "Summarize indexed fixture content and include source grounding.",
+    "answer": "Sophon retrieved 1 grounded passage(s) for \"Summarize indexed fixture content and include source grounding.\".",
+    "passages": [
+      {
+        "sourceName": "Fixture Source",
+        "score": 1,
+        "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+      }
+    ],
+    "generatedAt": "2026-03-05T22:15:07.839Z"
+  },
+  "index": {
+    "docCount": 14,
+    "chunkCount": 84,
+    "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+    "integrityStatus": "healthy",
+    "revision": 2,
+    "snapshots": [],
+    "lastUpdatedAt": "2026-03-05T22:15:07.838Z"
+  },
+  "tuning": {
+    "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+    "retrieverTopK": 20,
+    "rerankerEnabled": true,
+    "rerankerThreshold": 0.2,
+    "scoreThreshold": 0.15,
+    "contextWindowTokens": 32768,
+    "responseMaxTokens": 8192,
+    "explainRetrieval": true,
+    "maxIngestionWorkers": 4,
+    "forceCpuOnly": false
+  }
+}

@@ -2,6 +2,7 @@ mod execution_gateway;
 mod help;
 mod object_store;
 mod secrets;
+mod sophon_runtime;
 mod tools;
 
 const DB_URL: &str = "sqlite:korda_tools.db";
@@ -143,6 +144,8 @@ pub fn run() {
             object_store::object_store_write_file_atomic,
             object_store::object_store_read_file,
             execution_gateway::execution_gateway_http_request,
+            sophon_runtime::sophon_runtime_invoke,
+            sophon_runtime::sophon_runtime_shutdown,
             tools::commands::tools_list,
             tools::commands::tool_get,
             tools::commands::tool_create,

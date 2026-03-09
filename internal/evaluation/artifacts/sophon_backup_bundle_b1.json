@@ -1,0 +1,338 @@
+{
+  "exportedAt": "2026-03-05T22:15:07.861Z",
+  "module": "Sophon",
+  "version": 1,
+  "state": {
+    "version": 1,
+    "runtime": {
+      "transport": "in_process",
+      "engineMode": "embedded_nvidia",
+      "status": "running",
+      "gpuAvailable": true,
+      "modelLoaded": true,
+      "vectorStoreReady": true,
+      "diskUsagePct": 0,
+      "queueDepth": 0,
+      "activeWorkers": 0,
+      "lastHealthCheckAt": "2026-03-05T22:15:07.832Z"
+    },
+    "role": "admin",
+    "offlineOnlyEnforced": true,
+    "egressBlocked": true,
+    "blockedEgressAttempts": [],
+    "crossClientMixingPrevented": true,
+    "sources": [
+      {
+        "id": "source-0cf2d8bc-9391-4e26-a218-d123c8841e62",
+        "sourceType": "folder",
+        "name": "Fixture Source",
+        "path": "C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures",
+        "enabled": true,
+        "settings": {
+          "includePatterns": [
+            "**/*.pdf",
+            "**/*.txt",
+            "**/*.md",
+            "**/*.docx"
+          ],
+          "excludePatterns": [
+            "**/archive/**"
+          ],
+          "allowedExtensions": [
+            ".pdf",
+            ".docx",
+            ".xlsx",
+            ".csv",
+            ".txt",
+            ".md",
+            ".dwg",
+            ".dxf",
+            ".ifc",
+            ".jpg",
+            ".png"
+          ],
+          "maxFileSizeMb": 1024,
+          "maxPages": 5000,
+          "watchEnabled": false,
+          "watchIntervalSec": 300,
+          "debounceSeconds": 20,
+          "dedupeStrategy": "sha256",
+          "changeDetection": "mtime_size_hash",
+          "retention": {
+            "derivedArtifactsDays": 180,
+            "snapshotRetentionDays": 365,
+            "keepFailedJobArtifactsDays": 30
+          },
+          "chunkSize": 1024,
+          "chunkOverlap": 150,
+          "pageAwareChunking": true,
+          "ocrEnabled": true,
+          "extractionEnabled": true
+        },
+        "tags": [
+          "sophon"
+        ],
+        "sensitivity": "Internal",
+        "createdAt": "2026-03-05T22:15:07.831Z",
+        "updatedAt": "2026-03-05T22:15:07.831Z",
+        "lastIngestedAt": "2026-03-05T22:15:07.838Z"
+      }
+    ],
+    "jobs": [
+      {
+        "id": "job-a8640acf-a6a2-493f-9937-45467db15aaa",
+        "sourceId": "source-0cf2d8bc-9391-4e26-a218-d123c8841e62",
+        "sourceName": "Fixture Source",
+        "status": "completed",
+        "currentStage": "publish",
+        "stages": [
+          {
+            "stage": "enumerate",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 14,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.834Z",
+            "endedAt": "2026-03-05T22:15:07.835Z",
+            "latencyMs": 420
+          },
+          {
+            "stage": "classify",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.835Z",
+            "endedAt": "2026-03-05T22:15:07.835Z",
+            "latencyMs": 840
+          },
+          {
+            "stage": "extract",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.835Z",
+            "endedAt": "2026-03-05T22:15:07.836Z",
+            "latencyMs": 1260
+          },
+          {
+            "stage": "normalize",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.836Z",
+            "endedAt": "2026-03-05T22:15:07.836Z",
+            "latencyMs": 1680
+          },
+          {
+            "stage": "chunk",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 84,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.836Z",
+            "endedAt": "2026-03-05T22:15:07.837Z",
+            "latencyMs": 2100
+          },
+          {
+            "stage": "embed",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.837Z",
+            "endedAt": "2026-03-05T22:15:07.837Z",
+            "latencyMs": 2520
+          },
+          {
+            "stage": "index",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.837Z",
+            "endedAt": "2026-03-05T22:15:07.837Z",
+            "latencyMs": 2940
+          },
+          {
+            "stage": "validate",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.837Z",
+            "endedAt": "2026-03-05T22:15:07.838Z",
+            "latencyMs": 3360
+          },
+          {
+            "stage": "publish",
+            "status": "completed",
+            "progressPct": 100,
+            "filesProcessed": 0,
+            "chunksProduced": 0,
+            "errorCount": 0,
+            "startedAt": "2026-03-05T22:15:07.838Z",
+            "endedAt": "2026-03-05T22:15:07.838Z",
+            "latencyMs": 3780
+          }
+        ],
+        "checkpoints": [
+          {
+            "stage": "enumerate",
+            "cursor": "done:enumerate",
+            "persistedAt": "2026-03-05T22:15:07.835Z"
+          },
+          {
+            "stage": "classify",
+            "cursor": "done:classify",
+            "persistedAt": "2026-03-05T22:15:07.835Z"
+          },
+          {
+            "stage": "extract",
+            "cursor": "done:extract",
+            "persistedAt": "2026-03-05T22:15:07.836Z"
+          },
+          {
+            "stage": "normalize",
+            "cursor": "done:normalize",
+            "persistedAt": "2026-03-05T22:15:07.836Z"
+          },
+          {
+            "stage": "chunk",
+            "cursor": "done:chunk",
+            "persistedAt": "2026-03-05T22:15:07.837Z"
+          },
+          {
+            "stage": "embed",
+            "cursor": "done:embed",
+            "persistedAt": "2026-03-05T22:15:07.837Z"
+          },
+          {
+            "stage": "index",
+            "cursor": "done:index",
+            "persistedAt": "2026-03-05T22:15:07.837Z"
+          },
+          {
+            "stage": "validate",
+            "cursor": "done:validate",
+            "persistedAt": "2026-03-05T22:15:07.838Z"
+          },
+          {
+            "stage": "publish",
+            "cursor": "done:publish",
+            "persistedAt": "2026-03-05T22:15:07.838Z"
+          }
+        ],
+        "options": {
+          "dryRun": false,
+          "safeMode": true,
+          "maxWorkers": 4
+        },
+        "startedAt": "2026-03-05T22:15:07.833Z",
+        "retries": 0,
+        "discoveredFiles": 14,
+        "processedDocuments": 14,
+        "failedDocuments": 0,
+        "producedChunks": 84,
+        "blockedByPolicy": false,
+        "validation": {
+          "integrityPass": true,
+          "retrievalSanityPass": true,
+          "orphanedChunks": 0,
+          "missingMetadataRows": 0,
+          "warnings": [],
+          "errors": []
+        },
+        "endedAt": "2026-03-05T22:15:07.838Z"
+      }
+    ],
+    "index": {
+      "docCount": 14,
+      "chunkCount": 84,
+      "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+      "integrityStatus": "healthy",
+      "revision": 2,
+      "snapshots": [],
+      "lastUpdatedAt": "2026-03-05T22:15:07.838Z"
+    },
+    "tuning": {
+      "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+      "retrieverTopK": 20,
+      "rerankerEnabled": true,
+      "rerankerThreshold": 0.2,
+      "scoreThreshold": 0.15,
+      "contextWindowTokens": 32768,
+      "responseMaxTokens": 8192,
+      "explainRetrieval": true,
+      "maxIngestionWorkers": 4,
+      "forceCpuOnly": false
+    },
+    "metrics": [],
+    "logs": [
+      {
+        "id": "log-43f135f5-ced0-4322-8cbd-30724aaa46ad",
+        "ts": "2026-03-05T22:15:07.838Z",
+        "severity": "info",
+        "source": "ingestion",
+        "message": "1 job(s) completed."
+      },
+      {
+        "id": "log-0cfc9010-57d1-4121-8c61-fa4afe78f791",
+        "ts": "2026-03-05T22:15:07.833Z",
+        "severity": "info",
+        "source": "runtime",
+        "message": "Runtime started without HTTP listeners."
+      }
+    ],
+    "audit": [
+      {
+        "id": "audit-7e8b1360-df4d-4ce7-aedf-7c5137d8411f",
+        "eventTsUtc": "2026-03-05T22:15:07.833Z",
+        "actorId": "local-admin",
+        "action": "sophon.runtime.start",
+        "entityType": "runtime",
+        "entityId": "sophon",
+        "details": "Runtime started in offline mode.",
+        "severity": "info"
+      },
+      {
+        "id": "audit-c6dda539-37d2-4cb2-8f3f-edcf07657201",
+        "eventTsUtc": "2026-03-05T22:15:07.832Z",
+        "actorId": "local-admin",
+        "action": "sophon.sources.add",
+        "entityType": "source",
+        "entityId": "source-0cf2d8bc-9391-4e26-a218-d123c8841e62",
+        "details": "Added source \"Fixture Source\"",
+        "severity": "info"
+      }
+    ],
+    "activity": [
+      "2026-03-05T22:15:07.838Z 1 ingestion job(s) completed.",
+      "2026-03-05T22:15:07.833Z Ingestion queued for source Fixture Source.",
+      "2026-03-05T22:15:07.832Z Runtime started.",
+      "2026-03-05T22:15:07.832Z Source added: Fixture Source."
+    ],
+    "lastRetrieval": {
+      "query": "Summarize indexed fixture content and include source grounding.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"Summarize indexed fixture content and include source grounding.\".",
+      "passages": [
+        {
+          "sourceName": "Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ],
+      "generatedAt": "2026-03-05T22:15:07.839Z"
+    }
+  }
+}

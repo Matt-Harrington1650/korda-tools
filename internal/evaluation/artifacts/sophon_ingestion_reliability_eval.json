@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-03-05T22:15:07.841Z",
+  "sourceId": "source-4c87f4f7-6f1c-4682-b533-49c339f1816f",
+  "sourceSettings": {
+    "includePatterns": [
+      "**/*.pdf",
+      "**/*.txt",
+      "**/*.md",
+      "**/*.docx"
+    ],
+    "excludePatterns": [
+      "**/archive/**"
+    ],
+    "allowedExtensions": [
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      ".csv",
+      ".txt",
+      ".md",
+      ".dwg",
+      ".dxf",
+      ".ifc",
+      ".jpg",
+      ".png"
+    ],
+    "maxFileSizeMb": 1024,
+    "maxPages": 5000,
+    "watchEnabled": false,
+    "watchIntervalSec": 300,
+    "debounceSeconds": 20,
+    "dedupeStrategy": "sha256",
+    "changeDetection": "mtime_size_hash",
+    "retention": {
+      "derivedArtifactsDays": 180,
+      "snapshotRetentionDays": 365,
+      "keepFailedJobArtifactsDays": 30
+    },
+    "chunkSize": 1024,
+    "chunkOverlap": 150,
+    "pageAwareChunking": true,
+    "ocrEnabled": true,
+    "extractionEnabled": true
+  },
+  "firstJob": {
+    "id": "job-7633cf17-45a2-4937-82d9-28d145b6ca36",
+    "pausedStatus": "paused",
+    "resumedStatus": "queued",
+    "finalStatus": "completed"
+  },
+  "retryFlow": {
+    "cancelledJobId": "job-06d5747a-c4f4-4406-8da4-a556ce5375e4",
+    "retryJobId": null,
+    "retryJobStatus": null
+  },
+  "indexStats": {
+    "firstDocCount": 14,
+    "firstChunkCount": 84,
+    "secondPassDocCount": 28,
+    "secondPassChunkCount": 168,
+    "idempotentDocCount": false,
+    "idempotentChunkCount": false
+  },
+  "auditCount": 2,
+  "logCount": 3
+}

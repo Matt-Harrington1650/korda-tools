@@ -210,6 +210,25 @@ export type SophonLogEntry = {
   message: string;
 };
 
+export type SophonRuntimeReadinessCheck = {
+  id: string;
+  title: string;
+  status: 'pass' | 'warn' | 'fail';
+  blocking: boolean;
+  message: string;
+  remediation: string[];
+  details?: Record<string, unknown>;
+};
+
+export type SophonRuntimeReadinessReport = {
+  generatedAt: string;
+  state: 'ready' | 'degraded' | 'blocked';
+  summary: string;
+  blockerCount: number;
+  warningCount: number;
+  checks: SophonRuntimeReadinessCheck[];
+};
+
 export type SophonSystemState = {
   version: 1;
   runtime: {
@@ -237,5 +256,6 @@ export type SophonSystemState = {
   logs: SophonLogEntry[];
   audit: SophonAuditEvent[];
   activity: string[];
+  runtimeReadiness?: SophonRuntimeReadinessReport;
   lastRetrieval?: SophonRetrievalResult;
 };

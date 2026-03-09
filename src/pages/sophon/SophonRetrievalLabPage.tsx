@@ -3,12 +3,14 @@ import { useSophonStore } from '../../features/sophon/store/sophonStore';
 
 export function SophonRetrievalLabPage() {
   const [query, setQuery] = useState('');
+  const [message, setMessage] = useState('');
   const runRetrievalTest = useSophonStore((store) => store.runRetrievalTest);
   const lastRetrieval = useSophonStore((store) => store.state.lastRetrieval);
   const tuning = useSophonStore((store) => store.state.tuning);
 
   const exportReport = (): void => {
     if (!lastRetrieval) {
+      setMessage('Run a retrieval test before exporting a report.');
       return;
     }
 
@@ -25,10 +27,12 @@ export function SophonRetrievalLabPage() {
     anchor.download = `sophon-retrieval-report-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+    setMessage('JSON report exported.');
   };
 
   const exportHumanReport = (): void => {
     if (!lastRetrieval) {
+      setMessage('Run a retrieval test before exporting a text report.');
       return;
     }
     const lines = [
@@ -50,6 +54,7 @@ export function SophonRetrievalLabPage() {
     anchor.download = `sophon-retrieval-report-${Date.now()}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
+    setMessage('Text report exported.');
   };
 
   return (
@@ -71,7 +76,13 @@ export function SophonRetrievalLabPage() {
         <button
           className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
           onClick={() => {
-            runRetrievalTest(query);
+            const trimmed = query.trim();
+            if (!trimmed) {
+              setMessage('Enter a question before running retrieval.');
+              return;
+            }
+            runRetrievalTest(trimmed);
+            setMessage('Retrieval test submitted.');
           }}
           type="button"
         >
@@ -92,6 +103,7 @@ export function SophonRetrievalLabPage() {
           Export Text
         </button>
       </div>
+      {message ? <p className="mt-2 text-xs text-slate-600">{message}</p> : null}
 
       {lastRetrieval ? (
         <div className="mt-4 space-y-3">

@@ -1,0 +1,154 @@
+{
+  "module": "Sophon Retrieval Lab",
+  "generatedAt": "2026-03-05T22:15:09.468Z",
+  "queryCount": 10,
+  "queryResults": [
+    {
+      "query": "Summarize major technical points in the indexed fixtures.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"Summarize major technical points in the indexed fixtures.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "List standards and specification references.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"List standards and specification references.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "What evidence mentions pressure rating or equipment tags?",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"What evidence mentions pressure rating or equipment tags?\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "Show any notes related to RFI handling.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"Show any notes related to RFI handling.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "What source appears to contain table-oriented content?",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"What source appears to contain table-oriented content?\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "What does the walkthrough fixture mention about pumps?",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"What does the walkthrough fixture mention about pumps?\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "Give a short executive summary of indexed corpus.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"Give a short executive summary of indexed corpus.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "What ingestion constraints are visible from source configuration?",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"What ingestion constraints are visible from source configuration?\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "List any safety or risk-related terms.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"List any safety or risk-related terms.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    },
+    {
+      "query": "Provide a concise answer with grounding references.",
+      "answer": "Sophon retrieved 1 grounded passage(s) for \"Provide a concise answer with grounding references.\".",
+      "passageCount": 1,
+      "passages": [
+        {
+          "sourceName": "Retrieval Fixture Source",
+          "score": 1,
+          "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
+        }
+      ]
+    }
+  ],
+  "tuningComparison": {
+    "lowTopK": 1,
+    "highTopK": 1,
+    "changed": false
+  },
+  "indexState": {
+    "docCount": 14,
+    "chunkCount": 84,
+    "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+    "integrityStatus": "healthy",
+    "revision": 2,
+    "snapshots": [],
+    "lastUpdatedAt": "2026-03-05T22:15:09.466Z"
+  },
+  "tuningState": {
+    "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
+    "retrieverTopK": 20,
+    "rerankerEnabled": true,
+    "rerankerThreshold": 0.2,
+    "scoreThreshold": 0.15,
+    "contextWindowTokens": 32768,
+    "responseMaxTokens": 8192,
+    "explainRetrieval": true,
+    "maxIngestionWorkers": 4,
+    "forceCpuOnly": false
+  },
+  "auditCount": 2
+}

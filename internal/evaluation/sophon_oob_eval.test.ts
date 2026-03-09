@@ -143,6 +143,19 @@ describe('Sophon OOB evaluation artifact generation', () => {
     expect(restore.ok).toBe(true);
     useSophonStore.getState().runRetrievalTest('post-restore retrieval check');
     expect(useSophonStore.getState().state.lastRetrieval?.answer.length).toBeGreaterThan(0);
+
+    const restoreSummary = {
+      generatedAt: new Date().toISOString(),
+      dryRun,
+      tampered,
+      stateUnchangedAfterTamper: beforeFailure === afterFailure,
+      restore,
+      postRestoreAnswer: useSophonStore.getState().state.lastRetrieval?.answer ?? '',
+      postRestorePassages: useSophonStore.getState().state.lastRetrieval?.passages.length ?? 0,
+    };
+    writeFileSync(
+      resolve(artifactsDir, 'sophon_backup_restore_eval.json'),
+      `${JSON.stringify(restoreSummary, null, 2)}\n`,
+    );
   });
 });
-

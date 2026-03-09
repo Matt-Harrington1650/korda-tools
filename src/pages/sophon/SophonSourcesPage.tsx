@@ -11,15 +11,73 @@ export function SophonSourcesPage() {
   const [sourceType, setSourceType] = useState<SophonSourceType>('folder');
   const [name, setName] = useState('');
   const [path, setPath] = useState('');
-  const [includePatterns, setIncludePatterns] = useState('**/*.pdf,**/*.docx');
+  const [includePatterns, setIncludePatterns] = useState('*.pdf,*.docx,**/*.pdf,**/*.docx');
   const [excludePatterns, setExcludePatterns] = useState('**/tmp/**,**/~$*');
   const [extensions, setExtensions] = useState('.pdf,.docx,.dwg,.dxf,.ifc,.xlsx,.csv,.txt,.jpg,.png');
   const [watchEnabled, setWatchEnabled] = useState(false);
   const [dryRun, setDryRun] = useState(false);
   const [safeMode, setSafeMode] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formMessage, setFormMessage] = useState('');
 
   const sourceCount = sources.length;
   const watchCount = useMemo(() => sources.filter((item) => item.settings.watchEnabled).length, [sources]);
+  const normalizedName = name.trim().toLowerCase();
+  const normalizedPath = normalizePath(path);
+  const duplicateSourceExists = sources.some(
+    (item) => item.name.trim().toLowerCase() === normalizedName || normalizePath(item.path) === normalizedPath,
+  );
+
+  const saveSource = (): void => {
+    const trimmedName = name.trim();
+    const trimmedPath = path.trim();
+    const include = splitList(includePatterns);
+    const exclude = splitList(excludePatterns);
+    const allowedExtensions = splitExtensions(extensions);
+
+    if (!trimmedName || !trimmedPath) {
+      setFormError('Name and path are required before saving a source.');
+      return;
+    }
+
+    if (duplicateSourceExists) {
+      setFormError('A source with this name or path already exists.');
+      return;
+    }
+
+    if (include.length === 0) {
+      setFormError('Provide at least one include pattern.');
+      return;
+    }
+
+    if (allowedExtensions.length === 0) {
+      setFormError('Provide at least one allowed extension (for example: .pdf,.docx,.txt).');
+      return;
+    }
+
+    addSource({
+      sourceType,
+      name: trimmedName,
+      path: trimmedPath,
+      includePatterns: include,
+      excludePatterns: exclude,
+      allowedExtensions,
+      watchEnabled,
+      chunkSize: 1024,
+      chunkOverlap: 150,
+      ocrEnabled: true,
+      extractionEnabled: true,
+      pageAwareChunking: true,
+      maxFileSizeMb: 1024,
+      maxPages: 5000,
+      tags: ['sophon', 'ingestion'],
+      sensitivity: 'Internal',
+    });
+    setName('');
+    setPath('');
+    setFormError('');
+    setFormMessage(`Source "${trimmedName}" saved.`);
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-5">
@@ -35,6 +93,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setSourceType(event.target.value as SophonSourceType);
+                setFormError('');
               }}
               value={sourceType}
             >
@@ -49,6 +108,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setName(event.target.value);
+                setFormError('');
               }}
               value={name}
             />
@@ -59,6 +119,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setPath(event.target.value);
+                setFormError('');
               }}
               placeholder="D:\\KORDA\\Projects\\EPC-A"
               value={path}
@@ -70,6 +131,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setIncludePatterns(event.target.value);
+                setFormError('');
               }}
               value={includePatterns}
             />
@@ -80,6 +142,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setExcludePatterns(event.target.value);
+                setFormError('');
               }}
               value={excludePatterns}
             />
@@ -90,6 +153,7 @@ export function SophonSourcesPage() {
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => {
                 setExtensions(event.target.value);
+                setFormError('');
               }}
               value={extensions}
             />
@@ -106,35 +170,15 @@ export function SophonSourcesPage() {
           </label>
           <button
             className="w-full rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
-            onClick={() => {
-              if (!name.trim() || !path.trim()) {
-                return;
-              }
-              addSource({
-                sourceType,
-                name,
-                path,
-                includePatterns: splitList(includePatterns),
-                excludePatterns: splitList(excludePatterns),
-                allowedExtensions: splitList(extensions),
-                watchEnabled,
-                chunkSize: 1024,
-                chunkOverlap: 150,
-                ocrEnabled: true,
-                extractionEnabled: true,
-                pageAwareChunking: true,
-                maxFileSizeMb: 1024,
-                maxPages: 5000,
-                tags: ['sophon', 'ingestion'],
-                sensitivity: 'Internal',
-              });
-              setName('');
-              setPath('');
-            }}
+            onClick={saveSource}
             type="button"
           >
             Save Source
           </button>
+          {formError ? <p className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700">{formError}</p> : null}
+          {formMessage ? (
+            <p className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{formMessage}</p>
+          ) : null}
         </div>
       </section>
 
@@ -240,3 +284,8 @@ const splitList = (value: string): string[] =>
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+
+const splitExtensions = (value: string): string[] =>
+  splitList(value).map((item) => (item.startsWith('.') ? item.toLowerCase() : `.${item.toLowerCase()}`));
+
+const normalizePath = (value: string): string => value.trim().replaceAll('\\', '/').toLowerCase();

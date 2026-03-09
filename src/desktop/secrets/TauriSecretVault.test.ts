@@ -21,7 +21,9 @@ describe('TauriSecretVault', () => {
 
     expect(mockTauriInvoke).toHaveBeenCalledTimes(1);
     expect(mockTauriInvoke).toHaveBeenCalledWith('secret_set', {
+      credentialId: 'cred-1',
       credential_id: 'cred-1',
+      secretValue: 'super-secret-value',
       secret_value: 'super-secret-value',
     });
   });
@@ -36,6 +38,7 @@ describe('TauriSecretVault', () => {
     expect(secret).toBe('resolved-secret');
     expect(mockTauriInvoke).toHaveBeenCalledTimes(1);
     expect(mockTauriInvoke).toHaveBeenCalledWith('secret_get', {
+      credentialId: 'cred-2',
       credential_id: 'cred-2',
     });
   });
@@ -48,6 +51,7 @@ describe('TauriSecretVault', () => {
 
     expect(mockTauriInvoke).toHaveBeenCalledTimes(1);
     expect(mockTauriInvoke).toHaveBeenCalledWith('secret_delete', {
+      credentialId: 'cred-3',
       credential_id: 'cred-3',
     });
   });

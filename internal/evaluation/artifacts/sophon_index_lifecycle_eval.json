@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-03-05T22:15:09.407Z",
+  "snapshots": [
+    {
+      "id": "snapshot-1cc271a8-b307-4ed4-8133-3af4e743b252",
+      "name": "S2-after-second-pass",
+      "createdAt": "2026-03-05T22:15:09.407Z",
+      "docCount": 28,
+      "chunkCount": 155,
+      "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2"
+    },
+    {
+      "id": "snapshot-bb2ec5e5-06a7-4fbe-a689-2d25db6228c9",
+      "name": "S1-baseline",
+      "createdAt": "2026-03-05T22:15:09.405Z",
+      "docCount": 14,
+      "chunkCount": 84,
+      "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2"
+    }
+  ],
+  "countsAfterS1": {
+    "docCount": 14,
+    "chunkCount": 84
+  },
+  "countsAfterRestore": {
+    "docCount": 14,
+    "chunkCount": 84,
+    "activeSnapshotId": "snapshot-bb2ec5e5-06a7-4fbe-a689-2d25db6228c9"
+  },
+  "restoreMatchedBaseline": true,
+  "invalidRestoreNoOp": true,
+  "auditCount": 2
+}

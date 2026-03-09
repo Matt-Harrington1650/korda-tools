@@ -39,7 +39,8 @@ export function SophonIngestionJobsPage() {
 
             <div className="mt-2 flex flex-wrap gap-2">
               <button
-                className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={job.status !== 'running'}
                 onClick={() => {
                   pauseJob(job.id);
                 }}
@@ -48,7 +49,8 @@ export function SophonIngestionJobsPage() {
                 Pause
               </button>
               <button
-                className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                className="rounded border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={job.status !== 'paused'}
                 onClick={() => {
                   resumeJob(job.id);
                 }}
@@ -57,7 +59,8 @@ export function SophonIngestionJobsPage() {
                 Resume
               </button>
               <button
-                className="rounded border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                className="rounded border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={['completed', 'failed', 'cancelled'].includes(job.status)}
                 onClick={() => {
                   cancelJob(job.id);
                 }}
@@ -66,7 +69,8 @@ export function SophonIngestionJobsPage() {
                 Cancel
               </button>
               <button
-                className="rounded border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={job.status !== 'failed' && job.status !== 'cancelled'}
                 onClick={() => {
                   retryJob(job.id);
                 }}
@@ -75,6 +79,9 @@ export function SophonIngestionJobsPage() {
                 Retry
               </button>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Actions available: Pause (running), Resume (paused), Cancel (active), Retry (failed/cancelled).
+            </p>
 
             {job.failureReason ? (
               <p className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">

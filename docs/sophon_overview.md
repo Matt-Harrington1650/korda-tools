@@ -39,19 +39,22 @@ Each job tracks:
 - Local logs and metrics are retained in Sophon state for export.
 
 ## Runtime Design
-- Runtime transport is in-process for Sophon control-plane behavior.
+- Sophon uses a private IPC runtime bridge (`stdio` JSON-RPC) between Tauri and an embedded worker.
+- The worker can load KORDA-RAG internals directly in library mode (no localhost admin surface).
 - No Sophon HTTP listener is created.
 - Existing generic execution gateway remains separate and outside Sophon runtime scope.
 
 ## Current Scope
 Implemented:
 - Full Sophon IA in KORDA TOOLS.
+- Secure NVIDIA API key management in Sophon Settings.
+- Enterprise readiness checks with blocker/warning remediation guidance.
+- Auto-remediation flow for collection bootstrap and dependency re-check.
 - Source CRUD and ingestion queue controls.
 - Stage-based ingestion progression with pause/resume/cancel/retry.
 - Index rebuild/compact/validate/snapshot/restore/publish.
 - Retrieval lab with citation-like passage traces and JSON/text report export.
 - Backup/restore with dry-run validation and logs export.
 
-Not yet implemented:
-- Full NVIDIA model runtime parity via private IPC into KORDA-RAG internals.
-- This remains a dedicated runtime adapter phase.
+Operational prerequisite:
+- Full ingest + retrieve requires local RAG dependencies to be reachable (Milvus/object storage/NV-Ingest and related backend prerequisites).

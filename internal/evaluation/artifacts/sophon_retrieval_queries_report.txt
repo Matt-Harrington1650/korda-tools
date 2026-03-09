@@ -1,0 +1,16 @@
+Sophon Retrieval Query Evaluation
+Generated: 2026-03-05T22:15:09.468Z
+Queries: 10
+Top-k comparison (2 vs 20): 1 vs 1
+Changed: false
+
+1. Summarize major technical points in the indexed fixtures. -> passages=1
+2. List standards and specification references. -> passages=1
+3. What evidence mentions pressure rating or equipment tags? -> passages=1
+4. Show any notes related to RFI handling. -> passages=1
+5. What source appears to contain table-oriented content? -> passages=1
+6. What does the walkthrough fixture mention about pumps? -> passages=1
+7. Give a short executive summary of indexed corpus. -> passages=1
+8. What ingestion constraints are visible from source configuration? -> passages=1
+9. List any safety or risk-related terms. -> passages=1
+10. Provide a concise answer with grounding references. -> passages=1

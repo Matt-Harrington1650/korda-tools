@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-03-05T22:15:09.506Z",
+  "roleAfterSwitch": "viewer",
+  "blockedEgressAttempts": [
+    {
+      "id": "egress-dd410dce-3dc3-464c-ba95-4b1d8a7fa507",
+      "attemptedTarget": "https://blocked.example/sensitive-egress-check",
+      "reason": "SOPHON_EGRESS_BLOCK_REQUIRED",
+      "blockedAt": "2026-03-05T22:15:09.506Z"
+    }
+  ],
+  "blockedEgressCount": 1,
+  "auditActionsSample": [
+    "sophon.sources.add",
+    "sophon.sources.add",
+    "sophon.runtime.start"
+  ],
+  "auditCount": 3,
+  "viewerMutationAllowed": true
+}

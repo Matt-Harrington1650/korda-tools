@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createStorageEngine, hasAsyncLoad } from '../../../storage/createStorageEngine';
 import { STORAGE_KEYS } from '../../../storage/keys';
 import { assertSophonOfflinePolicy } from '../policy';
+import { isSophonRuntimeBridgeEnabled, sophonRuntimeInvoke, sophonRuntimeState } from '../runtime/sophonRuntimeBridge';
 import { sophonSchemaVersion, sophonStoreSchema } from '../schemas';
 import type {
   SophonAuditEvent,
@@ -212,6 +213,7 @@ type Store = {
   updateTuning: (input: Partial<SophonTuningState>) => void;
   runRetrievalTest: (query: string) => void;
   recordBlockedEgressAttempt: (target: string, reason: string) => void;
+  setEgressBlocked: (blocked: boolean) => void;
   exportLogsBundle: () => string;
   exportBackupJson: () => string;
   importBackupJson: (json: string, dryRun: boolean) => { ok: boolean; message: string };
@@ -224,10 +226,34 @@ const patch = (set: (f: (v: Store) => Store) => void, fn: (s: SophonSystemState)
     persist(next);
     return { ...prev, state: next };
   });
+const bridgeEnabled = (): boolean => isSophonRuntimeBridgeEnabled();
+const replaceState = (set: (f: (v: Store) => Store) => void, state: SophonSystemState): void => {
+  persist(state);
+  set((prev) => ({ ...prev, state }));
+};
+const syncFromBridge = async (set: (f: (v: Store) => Store) => void): Promise<void> => {
+  if (!bridgeEnabled()) {
+    return;
+  }
+  try {
+    const next = await sophonRuntimeState();
+    replaceState(set, next);
+  } catch (error) {
+    console.error('Sophon runtime sync failed', error);
+  }
+};
 
 export const useSophonStore = create<Store>((set, get) => ({
   state: loadState(),
   startRuntime: () => {
+    if (bridgeEnabled()) {
+      void (async () => {
+        await sophonRuntimeInvoke('start_runtime');
+        await syncFromBridge(set);
+      })();
+      if (!timer) timer = setInterval(() => void useSophonStore.getState().pipelineTick(), TICK_MS);
+      return;
+    }
     patch(set, (s) => {
       assertSophonOfflinePolicy({ offlineOnly: s.offlineOnlyEnforced, networkEgressEnabled: !s.egressBlocked, runtimeTransport: 'in_process' });
       const n: SophonSystemState = {
@@ -257,6 +283,17 @@ export const useSophonStore = create<Store>((set, get) => ({
     if (!timer) timer = setInterval(() => useSophonStore.getState().pipelineTick(), TICK_MS);
   },
   stopRuntime: () => {
+    if (bridgeEnabled()) {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      void (async () => {
+        await sophonRuntimeInvoke('stop_runtime');
+        await syncFromBridge(set);
+      })();
+      return;
+    }
     if (timer) {
       clearInterval(timer);
       timer = null;
@@ -282,6 +319,12 @@ export const useSophonStore = create<Store>((set, get) => ({
     });
   },
   runHealthCheck: () =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('run_health_check');
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const q = s.jobs.filter((j) => j.status === 'queued').length;
       const r = s.jobs.filter((j) => j.status === 'running').length;
@@ -301,6 +344,9 @@ export const useSophonStore = create<Store>((set, get) => ({
       return n;
     }),
   pipelineTick: () =>
+    bridgeEnabled()
+      ? void syncFromBridge(set)
+      :
     patch(set, (s) => {
       if (s.runtime.status !== 'running') return s;
       const nowTs = now();
@@ -395,8 +441,20 @@ export const useSophonStore = create<Store>((set, get) => ({
       }
       return n;
     }),
-  setRole: (role) => patch(set, (s) => ({ ...s, role })),
+  setRole: (role) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('set_role', { role });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, role })),
   addSource: (input) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('add_source', input as Record<string, unknown>);
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const created = now();
       const src: SophonSource = {
@@ -434,9 +492,34 @@ export const useSophonStore = create<Store>((set, get) => ({
       return n;
     }),
   updateSource: (sourceId, patchData) =>
-    patch(set, (s) => ({ ...s, sources: s.sources.map((x) => (x.id === sourceId ? { ...x, ...patchData, updatedAt: now() } : x)) })),
-  removeSource: (sourceId) => patch(set, (s) => ({ ...s, sources: s.sources.filter((x) => x.id !== sourceId) })),
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('update_source', {
+            sourceId,
+            patch: patchData,
+          });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, sources: s.sources.map((x) => (x.id === sourceId ? { ...x, ...patchData, updatedAt: now() } : x)) })),
+  removeSource: (sourceId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('remove_source', { sourceId });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, sources: s.sources.filter((x) => x.id !== sourceId) })),
   queueIngestion: ({ sourceId, dryRun = false, safeMode = false, maxWorkers }) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('queue_ingestion', {
+            sourceId,
+            dryRun,
+            safeMode,
+            maxWorkers,
+          });
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const source = s.sources.find((x) => x.id === sourceId);
       if (!source) return s;
@@ -451,10 +534,34 @@ export const useSophonStore = create<Store>((set, get) => ({
       return n;
     }),
   runIngestion: (sourceId) => get().queueIngestion({ sourceId }),
-  pauseJob: (jobId) => patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && j.status === 'running' ? { ...j, status: 'paused' } : j)) })),
-  resumeJob: (jobId) => patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && j.status === 'paused' ? { ...j, status: 'queued' } : j)) })),
-  cancelJob: (jobId) => patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && !['completed', 'failed', 'cancelled'].includes(j.status) ? { ...j, status: 'cancelled', endedAt: now(), failureReason: j.failureReason ?? 'Cancelled by operator.' } : j)) })),
+  pauseJob: (jobId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('pause_job', { jobId });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && j.status === 'running' ? { ...j, status: 'paused' } : j)) })),
+  resumeJob: (jobId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('resume_job', { jobId });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && j.status === 'paused' ? { ...j, status: 'queued' } : j)) })),
+  cancelJob: (jobId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('cancel_job', { jobId });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === jobId && !['completed', 'failed', 'cancelled'].includes(j.status) ? { ...j, status: 'cancelled', endedAt: now(), failureReason: j.failureReason ?? 'Cancelled by operator.' } : j)) })),
   retryJob: (jobId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('retry_job', { jobId });
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const original = s.jobs.find((j) => j.id === jobId);
       const source = original ? s.sources.find((x) => x.id === original.sourceId) : undefined;
@@ -462,12 +569,30 @@ export const useSophonStore = create<Store>((set, get) => ({
       return { ...s, jobs: [newJob(source, original.options, original.retries + 1), ...s.jobs].slice(0, 5000) };
     }),
   rebuildIndex: () =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('rebuild_index');
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => ({
       ...s,
       index: { ...s.index, revision: s.index.revision + 1, integrityStatus: 'healthy', lastUpdatedAt: now() },
     })),
-  compactIndex: () => patch(set, (s) => ({ ...s, index: { ...s.index, chunkCount: Math.max(0, s.index.chunkCount - Math.floor(s.index.chunkCount * 0.08)), revision: s.index.revision + 1, lastUpdatedAt: now() } })),
+  compactIndex: () =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('compact_index');
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, index: { ...s.index, chunkCount: Math.max(0, s.index.chunkCount - Math.floor(s.index.chunkCount * 0.08)), revision: s.index.revision + 1, lastUpdatedAt: now() } })),
   validateIndex: () =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('validate_index');
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => ({
       ...s,
       index: {
@@ -477,6 +602,12 @@ export const useSophonStore = create<Store>((set, get) => ({
       },
     })),
   createSnapshot: (name) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('create_snapshot', { name });
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => ({
       ...s,
       index: {
@@ -486,14 +617,38 @@ export const useSophonStore = create<Store>((set, get) => ({
       },
     })),
   restoreSnapshot: (snapshotId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('restore_snapshot', { snapshotId });
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const snap = s.index.snapshots.find((x) => x.id === snapshotId);
       if (!snap) return s;
       return { ...s, index: { ...s.index, docCount: snap.docCount, chunkCount: snap.chunkCount, embeddingModel: snap.embeddingModel, activeSnapshotId: snap.id, revision: s.index.revision + 1, lastUpdatedAt: now() } };
     }),
-  publishSnapshot: (snapshotId) => patch(set, (s) => ({ ...s, index: { ...s.index, activeSnapshotId: snapshotId, lastUpdatedAt: now() } })),
-  updateTuning: (input) => patch(set, (s) => ({ ...s, tuning: { ...s.tuning, ...input, maxIngestionWorkers: clamp(input.maxIngestionWorkers ?? s.tuning.maxIngestionWorkers, 1, 128) }, index: { ...s.index, embeddingModel: input.embeddingModel ?? s.index.embeddingModel } })),
+  publishSnapshot: (snapshotId) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('publish_snapshot', { snapshotId });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, index: { ...s.index, activeSnapshotId: snapshotId, lastUpdatedAt: now() } })),
+  updateTuning: (input) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('update_tuning', { input });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, tuning: { ...s.tuning, ...input, maxIngestionWorkers: clamp(input.maxIngestionWorkers ?? s.tuning.maxIngestionWorkers, 1, 128) }, index: { ...s.index, embeddingModel: input.embeddingModel ?? s.index.embeddingModel } })),
   runRetrievalTest: (query) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('run_retrieval_test', { query });
+          await syncFromBridge(set);
+        })()
+      :
     patch(set, (s) => {
       const q = query.trim();
       if (!q) return s;
@@ -511,10 +666,29 @@ export const useSophonStore = create<Store>((set, get) => ({
       };
     }),
   recordBlockedEgressAttempt: (target, reason) =>
-    patch(set, (s) => ({ ...s, blockedEgressAttempts: [{ id: id('egress'), attemptedTarget: target, reason, blockedAt: now() }, ...s.blockedEgressAttempts].slice(0, 2000) })),
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('record_blocked_egress_attempt', { target, reason });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, blockedEgressAttempts: [{ id: id('egress'), attemptedTarget: target, reason, blockedAt: now() }, ...s.blockedEgressAttempts].slice(0, 2000) })),
+  setEgressBlocked: (blocked) =>
+    bridgeEnabled()
+      ? void (async () => {
+          await sophonRuntimeInvoke('set_egress_blocked', { blocked });
+          await syncFromBridge(set);
+        })()
+      : patch(set, (s) => ({ ...s, egressBlocked: blocked })),
   exportLogsBundle: () => get().state.logs.map((x) => JSON.stringify(x)).join('\n'),
   exportBackupJson: () => JSON.stringify({ exportedAt: now(), module: 'Sophon', version: sophonSchemaVersion, state: get().state }, null, 2),
   importBackupJson: (json, dryRun) => {
+    if (bridgeEnabled()) {
+      void (async () => {
+        await sophonRuntimeInvoke('import_backup_json', { json, dryRun });
+        await syncFromBridge(set);
+      })();
+      return { ok: true, message: dryRun ? 'Dry-run validation submitted.' : 'Restore submitted to Sophon runtime.' };
+    }
     try {
       const payload = JSON.parse(json) as { state?: unknown };
       const parsed = sophonStoreSchema.safeParse({ version: sophonSchemaVersion, state: payload.state });
@@ -533,4 +707,12 @@ if (hasAsyncLoad(persistence)) {
     const parsed = sophonStoreSchema.safeParse(v);
     if (parsed.success) useSophonStore.setState({ state: parsed.data.state });
   });
+}
+
+if (bridgeEnabled()) {
+  const bridgeSet = (updater: (value: Store) => Store): void => {
+    useSophonStore.setState(updater);
+  };
+  void syncFromBridge(bridgeSet);
+  if (!timer) timer = setInterval(() => void useSophonStore.getState().pipelineTick(), TICK_MS);
 }
