@@ -1,5 +1,6 @@
 mod execution_gateway;
 mod help;
+mod ingest;
 mod object_store;
 mod secrets;
 mod sophon_runtime;
@@ -129,6 +130,18 @@ fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: include_str!("../migrations/0020_add_ai_review_fields.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 21,
+            description: "create_ingest_supervisor",
+            sql: include_str!("../migrations/0021_create_ingest_supervisor.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 22,
+            description: "reconcile_ingest_supervisor_schema",
+            sql: include_str!("../migrations/0022_reconcile_ingest_supervisor_schema.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -146,6 +159,14 @@ pub fn run() {
             execution_gateway::execution_gateway_http_request,
             sophon_runtime::sophon_runtime_invoke,
             sophon_runtime::sophon_runtime_shutdown,
+            ingest::ingest_queue_source,
+            ingest::ingest_list_jobs,
+            ingest::ingest_get_job,
+            ingest::ingest_job_action,
+            ingest::ingest_list_alerts,
+            ingest::ingest_ack_alert,
+            ingest::ingest_get_health_snapshot,
+            ingest::ingest_force_exit,
             tools::commands::tools_list,
             tools::commands::tool_get,
             tools::commands::tool_create,
@@ -170,6 +191,9 @@ pub fn run() {
                 .add_migrations(DB_URL, sql_migrations())
                 .build(),
         )
+        .on_window_event(|window, event| {
+            ingest::handle_window_event(window, event);
+        })
         .setup(|app| {
             let log_level = if cfg!(debug_assertions) {
                 log::LevelFilter::Debug
@@ -181,6 +205,8 @@ pub fn run() {
                     .level(log_level)
                     .build(),
             )?;
+            ingest::setup(app.handle().clone())
+                .map_err(|error| std::io::Error::other(format!("ingest setup failed: {error}")))?;
             Ok(())
         });
 
@@ -246,7 +272,7 @@ mod tests {
             .map(|migration| migration.version)
             .collect();
 
-        for expected in [15, 16, 17, 18, 19, 20] {
+        for expected in [15, 16, 17, 18, 19, 20, 21, 22] {
             assert!(
                 versions.contains(&expected),
                 "expected governance migration version {} to be present",

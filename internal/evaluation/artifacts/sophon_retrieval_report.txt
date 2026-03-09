@@ -1,5 +1,5 @@
 Sophon Retrieval Report
-Generated: 2026-03-07T14:34:30.698Z
+Generated: 2026-03-09T14:19:06.033Z
 Query: Summarize indexed fixture content and include source grounding.
 Answer: Sophon retrieved 1 grounded passage(s) for "Summarize indexed fixture content and include source grounding.".
 Passages: 1

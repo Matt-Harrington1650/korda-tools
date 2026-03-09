@@ -7,9 +7,12 @@ import json
 import logging
 import multiprocessing as mp
 import os
+import re
 import sys
 import threading
+import mimetypes
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +22,29 @@ from uuid import uuid4
 logging.basicConfig(level=os.environ.get("SOPHON_LOG_LEVEL", "INFO").upper())
 log = logging.getLogger("sophon-runtime")
 STAGES = ["enumerate", "classify", "extract", "normalize", "chunk", "embed", "index", "validate", "publish"]
+DEFAULT_ALLOWED_EXTENSIONS = [
+    ".pdf",
+    ".docx",
+    ".dwg",
+    ".dxf",
+    ".ifc",
+    ".xlsx",
+    ".csv",
+    ".txt",
+    ".jpg",
+    ".png",
+    ".md",
+]
+LEGACY_INCLUDE_PATTERNS = {
+    "*.pdf",
+    "*.docx",
+    "*.md",
+    "**/*.pdf",
+    "**/*.docx",
+    "**/*.md",
+}
+EXTENSION_GLOB_RE = re.compile(r"^(?:\*\*/)?\*\.(?P<ext>[a-zA-Z0-9]+)$")
+REJECTION_SAMPLE_LIMIT = 8
 
 
 def configure_child_python_executable() -> None:
@@ -35,7 +61,36 @@ def configure_child_python_executable() -> None:
             pass
 
 
+def configure_runtime_temp_dir() -> Path:
+    configured = str(os.environ.get("TEMP_DIR") or "").strip()
+    if configured:
+        temp_dir = Path(configured).expanduser()
+    else:
+        app_data = str(os.environ.get("SOPHON_APP_DATA_DIR") or "").strip()
+        if app_data:
+            temp_dir = Path(app_data).expanduser() / "tmp-data"
+        else:
+            temp_dir = Path.home() / ".korda-tools" / "tmp-data"
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    resolved = str(temp_dir.resolve())
+
+    if not configured:
+        os.environ["TEMP_DIR"] = resolved
+
+    for variable in ("TMPDIR", "TMP", "TEMP"):
+        os.environ.setdefault(variable, os.environ.get("TEMP_DIR", resolved))
+
+    return temp_dir
+
+
 configure_child_python_executable()
+RUNTIME_TEMP_DIR = configure_runtime_temp_dir()
+log.info(
+    "Sophon runtime startup context: temp_dir=%s cwd=%s",
+    os.environ.get("TEMP_DIR") or str(RUNTIME_TEMP_DIR),
+    os.getcwd(),
+)
 
 
 def now() -> str:
@@ -116,11 +171,198 @@ def normalize_extension(value: str) -> str:
     return normalized if normalized.startswith(".") else f".{normalized}"
 
 
+def split_concatenated_glob_patterns(raw: str) -> list[str]:
+    value = str(raw or "").strip()
+    if not value:
+        return []
+    pieces: list[str] = []
+    start = 0
+    next_idx = value.find("**/", 1)
+    while next_idx != -1:
+        pieces.append(value[start:next_idx])
+        start = next_idx
+        next_idx = value.find("**/", next_idx + 3)
+    pieces.append(value[start:])
+    return [piece for piece in pieces if piece.strip()]
+
+
+def dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def normalize_glob_patterns(values: Any, fallback: list[str] | None = None) -> list[str]:
+    if values is None:
+        return list(fallback or [])
+    raw_values = values if isinstance(values, list) else [values]
+    tokens: list[str] = []
+    for raw in raw_values:
+        text = str(raw or "")
+        for part in text.replace(";", ",").replace("\n", ",").split(","):
+            for nested in split_concatenated_glob_patterns(part):
+                token = nested.strip().replace("\\", "/")
+                if token:
+                    tokens.append(token)
+    normalized = dedupe_preserve_order(tokens)
+    return normalized if normalized else list(fallback or [])
+
+
+def extract_pattern_extensions(patterns: list[str]) -> set[str]:
+    out: set[str] = set()
+    for pattern in patterns:
+        match = EXTENSION_GLOB_RE.match(str(pattern or "").strip().lower())
+        if not match:
+            continue
+        out.add(normalize_extension(match.group("ext")))
+    return {item for item in out if item}
+
+
+def build_extension_include_patterns(extensions: set[str]) -> list[str]:
+    patterns: list[str] = []
+    for extension in sorted(extensions):
+        if not extension.startswith(".") or len(extension) <= 1:
+            continue
+        suffix = extension[1:]
+        patterns.append(f"*.{suffix}")
+        patterns.append(f"**/*.{suffix}")
+    return patterns
+
+
+def normalize_source_file_filters(
+    settings: dict[str, Any],
+) -> tuple[list[str], list[str], set[str], list[str], list[str]]:
+    include_configured = normalize_glob_patterns(settings.get("includePatterns"), fallback=["**/*"])
+    exclude_patterns = normalize_glob_patterns(settings.get("excludePatterns"), fallback=["**/~$*", "**/.tmp/**"])
+    allowed = {
+        normalize_extension(value)
+        for value in (settings.get("allowedExtensions") or list(DEFAULT_ALLOWED_EXTENSIONS))
+        if normalize_extension(value)
+    }
+    if not allowed:
+        allowed = {normalize_extension(value) for value in DEFAULT_ALLOWED_EXTENSIONS}
+
+    include_extensions = extract_pattern_extensions(include_configured)
+    all_include_are_extension_globs = bool(include_configured) and all(
+        EXTENSION_GLOB_RE.match(str(pattern or "").strip().lower()) for pattern in include_configured
+    )
+    include_effective = list(include_configured)
+    auto_expanded_extensions: list[str] = []
+
+    # Heal legacy/include-subset sources: if include globs represent extension-only patterns,
+    # ensure every allowed extension is reachable by include matching.
+    if all_include_are_extension_globs and include_extensions and allowed:
+        missing_extensions = sorted(
+            extension for extension in allowed if extension not in include_extensions
+        )
+        if missing_extensions:
+            include_effective = dedupe_preserve_order(
+                [*include_configured, *build_extension_include_patterns(set(missing_extensions))]
+            )
+            auto_expanded_extensions = missing_extensions
+
+    return (
+        include_configured,
+        include_effective,
+        allowed,
+        exclude_patterns,
+        auto_expanded_extensions,
+    )
+
+
 def http_get_json(url: str, timeout_sec: int = 8) -> dict[str, Any]:
     request = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(request, timeout=timeout_sec) as response:
         body = response.read().decode("utf-8", errors="replace")
         parsed = json.loads(body)
+        if not isinstance(parsed, dict):
+            return {"raw": parsed}
+        return parsed
+
+
+def http_json_request(
+    url: str,
+    method: str = "GET",
+    payload: dict[str, Any] | list[Any] | None = None,
+    timeout_sec: int = 30,
+) -> dict[str, Any]:
+    data: bytes | None = None
+    headers: dict[str, str] = {}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+        body = response.read().decode("utf-8", errors="replace")
+        if not body.strip():
+            return {}
+        parsed = json.loads(body)
+        if not isinstance(parsed, dict):
+            return {"raw": parsed}
+        return parsed
+
+
+def encode_multipart_form_data(
+    fields: dict[str, str],
+    files: list[tuple[str, Path]],
+) -> tuple[str, bytes]:
+    boundary = f"----SophonBoundary{uuid4().hex}"
+    chunks: list[bytes] = []
+
+    for name, value in fields.items():
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("utf-8"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
+                value.encode("utf-8"),
+                b"\r\n",
+            ]
+        )
+
+    for field_name, path in files:
+        filename = path.name
+        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        file_bytes = path.read_bytes()
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("utf-8"),
+                (
+                    f'Content-Disposition: form-data; name="{field_name}"; '
+                    f'filename="{filename}"\r\n'
+                ).encode("utf-8"),
+                f"Content-Type: {mime_type}\r\n\r\n".encode("utf-8"),
+                file_bytes,
+                b"\r\n",
+            ]
+        )
+
+    chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(chunks)
+    return f"multipart/form-data; boundary={boundary}", body
+
+
+def http_post_multipart(
+    url: str,
+    fields: dict[str, str],
+    files: list[tuple[str, Path]],
+    timeout_sec: int = 120,
+) -> dict[str, Any]:
+    content_type, body = encode_multipart_form_data(fields, files)
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": content_type},
+    )
+    with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+        if not raw.strip():
+            return {}
+        parsed = json.loads(raw)
         if not isinstance(parsed, dict):
             return {"raw": parsed}
         return parsed
@@ -149,6 +391,13 @@ def state_template() -> dict[str, Any]:
 class NvidiaBridge:
     def __init__(self) -> None:
         self.collection = os.environ.get("SOPHON_COLLECTION_NAME", "multimodal_data")
+        self.ingestor_base_url = (
+            str(os.environ.get("SOPHON_INGESTOR_BASE_URL", "http://localhost:8082/v1")).rstrip("/")
+        )
+        self.use_ingestor_http = str(
+            os.environ.get("SOPHON_USE_INGESTOR_HTTP", "true")
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.ingestor_http_ready = False
         self.err: str | None = None
         self.ingestor: Any = None
         self.rag: Any = None
@@ -178,7 +427,7 @@ class NvidiaBridge:
         with self._init_lock:
             if self._init_complete:
                 return
-            timeout_sec = max(3, intv(os.environ.get("SOPHON_BRIDGE_INIT_TIMEOUT_SEC"), 15))
+            timeout_sec = max(3, intv(os.environ.get("SOPHON_BRIDGE_INIT_TIMEOUT_SEC"), 180))
             thread = threading.Thread(target=self._init_impl, daemon=True)
             thread.start()
             thread.join(timeout=timeout_sec)
@@ -233,17 +482,96 @@ class NvidiaBridge:
     def arun(self, coroutine):
         return asyncio.run(coroutine)
 
+    def _ensure_ingestor_http_ready(self) -> bool:
+        if not self.use_ingestor_http:
+            return False
+        if self.ingestor_http_ready:
+            return True
+        try:
+            _ = http_get_json(f"{self.ingestor_base_url}/health", timeout_sec=4)
+            self.ingestor_http_ready = True
+            return True
+        except Exception:
+            return False
+
+    def _ensure_collection_via_http(self) -> None:
+        collections_payload = http_get_json(
+            f"{self.ingestor_base_url}/collections",
+            timeout_sec=20,
+        )
+        rows = collections_payload.get("collections") or []
+        for row in rows:
+            if str((row or {}).get("collection_name") or "").strip() == self.collection:
+                return
+        _ = http_json_request(
+            f"{self.ingestor_base_url}/collection",
+            method="POST",
+            payload={"collection_name": self.collection},
+            timeout_sec=30,
+        )
+
+    def _upload_via_http(self, files: list[str], chunk: int, overlap: int) -> dict[str, Any]:
+        self._ensure_collection_via_http()
+        upload_payload = {
+            "collection_name": self.collection,
+            "blocking": False,
+            "split_options": {"chunk_size": max(1, int(chunk)), "chunk_overlap": max(0, int(overlap))},
+            "custom_metadata": [],
+            "generate_summary": False,
+            "documents_catalog_metadata": [],
+            "summary_options": None,
+            "enable_pdf_split_processing": False,
+            "pdf_split_processing_options": {"pages_per_chunk": 16},
+        }
+        multipart_files: list[tuple[str, Path]] = []
+        for file_path in files:
+            path = Path(file_path)
+            if not path.exists():
+                raise FileNotFoundError(f"source file does not exist: {file_path}")
+            multipart_files.append(("documents", path))
+        return http_post_multipart(
+            f"{self.ingestor_base_url}/documents",
+            fields={"data": json.dumps(upload_payload)},
+            files=multipart_files,
+            timeout_sec=180,
+        )
+
+    def _task_via_http(self, task_id: str) -> dict[str, Any]:
+        query = urllib.parse.urlencode({"task_id": task_id})
+        return http_get_json(f"{self.ingestor_base_url}/status?{query}", timeout_sec=45)
+
+    def _docs_via_http(self) -> dict[str, Any]:
+        query = urllib.parse.urlencode({"collection_name": self.collection})
+        return http_get_json(f"{self.ingestor_base_url}/documents?{query}", timeout_sec=30)
+
     def ensure_collection(self) -> None:
+        if self._ensure_ingestor_http_ready():
+            self._ensure_collection_via_http()
+            return
         if not self.ready:
             raise RuntimeError(self.err or "bridge unavailable")
         self.ingestor.create_collection(collection_name=self.collection)
 
     def docs(self) -> dict[str, Any]:
+        if self._ensure_ingestor_http_ready():
+            return self._docs_via_http()
         if not self.ready:
             raise RuntimeError(self.err or "bridge unavailable")
         return self.ingestor.get_documents(collection_name=self.collection)
 
     def rebuild_collection(self) -> None:
+        if self._ensure_ingestor_http_ready():
+            try:
+                _ = http_json_request(
+                    f"{self.ingestor_base_url}/collections",
+                    method="DELETE",
+                    payload=[self.collection],
+                    timeout_sec=30,
+                )
+            except Exception:
+                pass
+            self._ensure_collection_via_http()
+            return
         if not self.ready:
             raise RuntimeError(self.err or "bridge unavailable")
         try:
@@ -253,11 +581,27 @@ class NvidiaBridge:
         self.ingestor.create_collection(collection_name=self.collection)
 
     def upload(self, files: list[str], chunk: int, overlap: int) -> dict[str, Any]:
+        if self._ensure_ingestor_http_ready():
+            try:
+                return self._upload_via_http(files=files, chunk=chunk, overlap=overlap)
+            except Exception as exc:
+                log.warning(
+                    "HTTP ingestion path failed, falling back to in-process bridge: %s",
+                    exc,
+                )
         if not self.ready:
             raise RuntimeError(self.err or "bridge unavailable")
         return self.arun(self.ingestor.upload_documents(filepaths=files, blocking=False, collection_name=self.collection, split_options={"chunk_size": chunk, "chunk_overlap": overlap}, generate_summary=True))
 
     def task(self, task_id: str) -> dict[str, Any]:
+        if self._ensure_ingestor_http_ready():
+            try:
+                return self._task_via_http(task_id)
+            except Exception as exc:
+                log.warning(
+                    "HTTP task status path failed, falling back to in-process bridge: %s",
+                    exc,
+                )
         if not self.ready:
             raise RuntimeError(self.err or "bridge unavailable")
         return self.arun(self.ingestor_cls.status(task_id))
@@ -279,11 +623,58 @@ class Runtime:
         self.state = self._load()
         self.bridge = NvidiaBridge()
         self.task_for_job: dict[str, str] = {}
+        self._restore_task_mapping()
         if self.bridge.err:
             self.state["logs"] = [
                 {"id": rid("log"), "ts": now(), "severity": "warn", "source": "runtime", "message": self.bridge.err},
                 *self.state["logs"],
             ][:15000]
+
+    def _restore_task_mapping(self) -> None:
+        restored = 0
+        failed_missing_task = 0
+        for job in self.state.get("jobs") or []:
+            status = str(job.get("status") or "").strip().lower()
+            if status in {"completed", "failed", "cancelled", "paused"}:
+                continue
+            checkpoints = job.get("checkpoints") or []
+            task_id = ""
+            for checkpoint in reversed(checkpoints):
+                cursor = str((checkpoint or {}).get("cursor") or "").strip()
+                if cursor.startswith("task_id:"):
+                    task_id = cursor.split("task_id:", 1)[1].strip()
+                    if task_id:
+                        break
+            if task_id:
+                self.task_for_job[str(job.get("id") or "")] = task_id
+                restored += 1
+                continue
+
+            if status in {"running", "queued"}:
+                job["status"] = "failed"
+                job["failureReason"] = (
+                    "Recovered ingestion job had no backend task reference after restart. "
+                    "Re-queue ingestion for this source."
+                )
+                job["endedAt"] = now()
+                job["currentStage"] = "extract"
+                self.stage(job, "extract", "failed", 100)
+                failed_missing_task += 1
+
+        if restored > 0:
+            self.append_log(
+                "info",
+                "runtime",
+                f"Recovered {restored} in-flight ingestion task mapping(s) from persisted checkpoints.",
+            )
+        if failed_missing_task > 0:
+            self.append_log(
+                "warn",
+                "runtime",
+                f"Marked {failed_missing_task} recovered ingestion job(s) failed due to missing task references.",
+            )
+        if restored > 0 or failed_missing_task > 0:
+            self.save()
 
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -347,13 +738,20 @@ class Runtime:
             total = max(1, len(dstat))
             done = sum(1 for v in dstat.values() if str(v).lower() in {"completed", "finished", "done", "success"})
             progress = int((done / total) * 100)
+            status_counts: dict[str, int] = {}
+            for raw_status in dstat.values():
+                normalized = str(raw_status or "unknown").strip().lower() or "unknown"
+                status_counts[normalized] = status_counts.get(normalized, 0) + 1
+            top_status_fragments = [f"{key}:{value}" for key, value in sorted(status_counts.items())[:6]]
+            status_summary = ", ".join(top_status_fragments) if top_status_fragments else "none"
             self.stage(job, "enumerate", "completed", 100); self.stage(job, "classify", "completed", 100)
             if state in {"PENDING", "RUNNING", "STARTED", "IN_PROGRESS"}:
                 elapsed = elapsed_seconds_since(job.get("startedAt"))
                 if elapsed is not None and elapsed > pending_timeout_sec:
                     timeout_reason = (
-                        f"Ingestion task remained pending for {int(elapsed)}s "
-                        f"(timeout={pending_timeout_sec}s). Check NV-Ingest task execution, source parsing, and dependencies."
+                        f"Ingestion task {task_id} remained pending for {int(elapsed)}s "
+                        f"(timeout={pending_timeout_sec}s). NV-Ingest document status counts: {status_summary}. "
+                        "Check NV-Ingest task execution, source parsing, and dependencies."
                     )
                     job["status"] = "failed"; job["failureReason"] = timeout_reason; job["endedAt"] = now()
                     self.task_for_job.pop(job["id"], None)
@@ -361,17 +759,57 @@ class Runtime:
                     continue
                 job["status"] = "running"; job["currentStage"] = "extract"; self.stage(job, "extract", "running", max(2, progress)); job["discoveredFiles"] = total; job["processedDocuments"] = done
             elif state == "FINISHED":
-                job["status"] = "completed"; job["endedAt"] = now(); job["currentStage"] = "publish"
-                for name in STAGES:
-                    self.stage(job, name, "completed", 100)
                 result = payload.get("result") or {}
-                job["processedDocuments"] = intv(result.get("documents_completed"), total)
-                job["failedDocuments"] = len(result.get("failed_documents") or [])
-                job["producedChunks"] = max(0, intv(result.get("batches_completed"), 0))
+                completed_docs = intv(result.get("documents_completed"), done)
+                failed_docs = len(result.get("failed_documents") or [])
+                produced_chunks = max(0, intv(result.get("batches_completed"), 0))
+                if completed_docs <= 0 and failed_docs > 0:
+                    sample_failed = [
+                        str((row or {}).get("document_name") or "").strip()
+                        for row in (result.get("failed_documents") or [])[:3]
+                        if str((row or {}).get("document_name") or "").strip()
+                    ]
+                    failure_reason = str(result.get("message") or "Ingestion completed with zero successful documents.").strip()
+                    if sample_failed:
+                        failure_reason = (
+                            f"{failure_reason} Failed documents: {', '.join(sample_failed)}."
+                        )
+                    job["status"] = "failed"; job["endedAt"] = now(); job["currentStage"] = "extract"
+                    self.stage(job, "extract", "failed", 100)
+                    job["failureReason"] = failure_reason
+                    job["processedDocuments"] = 0
+                    job["failedDocuments"] = failed_docs
+                    job["producedChunks"] = produced_chunks
+                    self.append_log("warn", "ingestion", failure_reason)
+                else:
+                    job["status"] = "completed"; job["endedAt"] = now(); job["currentStage"] = "publish"
+                    for name in STAGES:
+                        self.stage(job, name, "completed", 100)
+                    job["processedDocuments"] = completed_docs
+                    job["failedDocuments"] = failed_docs
+                    job["producedChunks"] = produced_chunks
+                    if failed_docs > 0:
+                        self.append_log(
+                            "warn",
+                            "ingestion",
+                            f"Ingestion completed with {failed_docs} failed documents.",
+                        )
+                    self.refresh_index()
                 self.task_for_job.pop(job["id"], None)
-                self.refresh_index()
-            elif state == "FAILED":
-                job["status"] = "failed"; job["failureReason"] = str((payload.get("result") or {}).get("message") or "Ingestion failed."); job["endedAt"] = now(); self.task_for_job.pop(job["id"], None)
+            elif state in {"FAILED", "UNKNOWN", "NOT_FOUND", "CANCELLED"}:
+                result = payload.get("result") or {}
+                failure_reason = str(result.get("message") or f"Ingestion task ended with state={state}.")
+                if state in {"UNKNOWN", "NOT_FOUND"} and "not found" in failure_reason.lower():
+                    failure_reason = (
+                        f"{failure_reason} Backend task record is missing. "
+                        "This usually happens after ingestion backend restart; re-queue ingestion."
+                    )
+                job["status"] = "failed"
+                job["failureReason"] = failure_reason
+                job["endedAt"] = now()
+                job["currentStage"] = "extract"
+                self.stage(job, "extract", "failed", 100)
+                self.task_for_job.pop(job["id"], None)
         self.state["runtime"]["queueDepth"] = sum(1 for j in self.state["jobs"] if j["status"] == "queued")
         self.state["runtime"]["activeWorkers"] = sum(1 for j in self.state["jobs"] if j["status"] == "running")
         self.state["runtime"]["diskUsagePct"] = max(1, min(99, intv(self.state["index"]["chunkCount"] / 32, 1)))
@@ -842,29 +1280,105 @@ class Runtime:
         self.save()
         return {"ok": True, "actions": actions, "readiness": report, "state": self.state}
 
-    def list_files(self, source: dict[str, Any]) -> list[str]:
-        path = Path(source["path"]).expanduser()
-        if not path.exists():
-            return []
-        settings = source["settings"]
-        include = settings.get("includePatterns") or ["**/*"]
-        exclude = settings.get("excludePatterns") or []
-        allowed = {normalize_extension(x) for x in settings.get("allowedExtensions") or [] if normalize_extension(x)}
-        max_size = intv(settings.get("maxFileSizeMb"), 1024) * 1024 * 1024
-        files = [path] if source.get("sourceType") == "file" and path.is_file() else [f for f in path.rglob("*") if f.is_file()]
+    def enumerate_files(self, source: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+        source_path_raw = str(source.get("path") or "").strip()
+        configured_source_type = str(source.get("sourceType") or "folder").strip().lower() or "folder"
+        path = Path(source_path_raw).expanduser()
+        settings = source.get("settings") or {}
+        (
+            include_configured,
+            include_effective,
+            allowed,
+            exclude_patterns,
+            auto_expanded_extensions,
+        ) = normalize_source_file_filters(settings)
+        max_size = max(1, intv(settings.get("maxFileSizeMb"), 1024)) * 1024 * 1024
+
+        resolved_source_mode = "missing"
+        if path.is_file():
+            resolved_source_mode = "file"
+        elif path.is_dir():
+            resolved_source_mode = "folder"
+
+        candidate_files: list[Path] = []
+        if resolved_source_mode == "file":
+            candidate_files = [path]
+        elif resolved_source_mode == "folder":
+            candidate_files = [item for item in path.rglob("*") if item.is_file()]
+
+        rejected_by_include = 0
+        rejected_by_exclude = 0
+        rejected_by_extension = 0
+        rejected_by_size = 0
+        sample_rejections: list[dict[str, str]] = []
+
+        def add_sample(file_path: Path, relative_path: str, reason: str) -> None:
+            if len(sample_rejections) >= REJECTION_SAMPLE_LIMIT:
+                return
+            sample_rejections.append(
+                {
+                    "path": str(file_path),
+                    "relativePath": relative_path,
+                    "reason": reason,
+                }
+            )
+
         out: list[str] = []
-        for f in files:
-            rel = f.name if f == path else f.relative_to(path).as_posix()
-            if include and not any(match_glob_pattern(rel, pattern) for pattern in include):
+        for file_path in candidate_files:
+            relative_path = file_path.name if resolved_source_mode == "file" else file_path.relative_to(path).as_posix()
+            if (
+                resolved_source_mode == "folder"
+                and include_effective
+                and not any(match_glob_pattern(relative_path, pattern) for pattern in include_effective)
+            ):
+                rejected_by_include += 1
+                add_sample(file_path, relative_path, "include_mismatch")
                 continue
-            if exclude and any(match_glob_pattern(rel, pattern) for pattern in exclude):
+            if (
+                resolved_source_mode == "folder"
+                and exclude_patterns
+                and any(match_glob_pattern(relative_path, pattern) for pattern in exclude_patterns)
+            ):
+                rejected_by_exclude += 1
+                add_sample(file_path, relative_path, "excluded")
                 continue
-            if allowed and f.suffix.lower() not in allowed:
+            if allowed and normalize_extension(file_path.suffix) not in allowed:
+                rejected_by_extension += 1
+                add_sample(file_path, relative_path, "extension_not_allowed")
                 continue
-            if f.stat().st_size > max_size:
+            try:
+                if file_path.stat().st_size > max_size:
+                    rejected_by_size += 1
+                    add_sample(file_path, relative_path, "size_exceeded")
+                    continue
+            except OSError:
+                rejected_by_size += 1
+                add_sample(file_path, relative_path, "stat_error")
                 continue
-            out.append(str(f.resolve()))
-        return out
+            out.append(str(file_path.resolve()))
+
+        diagnostics = {
+            "sourcePath": source_path_raw,
+            "configuredSourceType": configured_source_type,
+            "resolvedSourceMode": resolved_source_mode,
+            "candidateFileCount": len(candidate_files),
+            "matchedFileCount": len(out),
+            "configuredIncludePatterns": include_configured,
+            "effectiveIncludePatterns": include_effective,
+            "excludePatterns": exclude_patterns,
+            "allowedExtensions": sorted(allowed),
+            "autoExpandedIncludeExtensions": auto_expanded_extensions,
+            "rejectedByInclude": rejected_by_include,
+            "rejectedByExclude": rejected_by_exclude,
+            "rejectedByExtension": rejected_by_extension,
+            "rejectedBySize": rejected_by_size,
+            "sampleRejections": sample_rejections,
+        }
+        return out, diagnostics
+
+    def list_files(self, source: dict[str, Any]) -> list[str]:
+        files, _ = self.enumerate_files(source)
+        return files
 
     def handle(self, method: str, params: dict[str, Any]) -> Any:
         if method == "ping":
@@ -903,7 +1417,7 @@ class Runtime:
         if method == "add_source":
             name = str(params.get("name") or "").strip(); path = str(params.get("path") or "").strip()
             if not name or not path: raise ValueError("Source name and path are required.")
-            created = now(); settings = {"includePatterns": params.get("includePatterns") or ["**/*"], "excludePatterns": params.get("excludePatterns") or ["**/~$*", "**/.tmp/**"], "allowedExtensions": params.get("allowedExtensions") or [".pdf", ".docx", ".txt", ".md"], "maxFileSizeMb": intv(params.get("maxFileSizeMb"), 1024), "maxPages": intv(params.get("maxPages"), 5000), "watchEnabled": bool(params.get("watchEnabled", False)), "watchIntervalSec": intv(params.get("watchIntervalSec"), 300), "debounceSeconds": intv(params.get("debounceSeconds"), 20), "dedupeStrategy": "sha256", "changeDetection": "mtime_size_hash", "retention": {"derivedArtifactsDays": 180, "snapshotRetentionDays": 365, "keepFailedJobArtifactsDays": 30}, "chunkSize": intv(params.get("chunkSize"), 1024), "chunkOverlap": intv(params.get("chunkOverlap"), 150), "pageAwareChunking": bool(params.get("pageAwareChunking", True)), "ocrEnabled": bool(params.get("ocrEnabled", True)), "extractionEnabled": bool(params.get("extractionEnabled", True))}
+            created = now(); settings = {"includePatterns": params.get("includePatterns") or ["**/*"], "excludePatterns": params.get("excludePatterns") or ["**/~$*", "**/.tmp/**"], "allowedExtensions": params.get("allowedExtensions") or list(DEFAULT_ALLOWED_EXTENSIONS), "maxFileSizeMb": intv(params.get("maxFileSizeMb"), 1024), "maxPages": intv(params.get("maxPages"), 5000), "watchEnabled": bool(params.get("watchEnabled", False)), "watchIntervalSec": intv(params.get("watchIntervalSec"), 300), "debounceSeconds": intv(params.get("debounceSeconds"), 20), "dedupeStrategy": "sha256", "changeDetection": "mtime_size_hash", "retention": {"derivedArtifactsDays": 180, "snapshotRetentionDays": 365, "keepFailedJobArtifactsDays": 30}, "chunkSize": intv(params.get("chunkSize"), 1024), "chunkOverlap": intv(params.get("chunkOverlap"), 150), "pageAwareChunking": bool(params.get("pageAwareChunking", True)), "ocrEnabled": bool(params.get("ocrEnabled", True)), "extractionEnabled": bool(params.get("extractionEnabled", True))}
             src = {"id": rid("source"), "sourceType": params.get("sourceType") or "folder", "name": name, "path": path, "enabled": True, "settings": settings, "tags": params.get("tags") or ["sophon"], "sensitivity": params.get("sensitivity") or "Internal", "clientBoundaryTag": params.get("clientBoundaryTag"), "projectBoundaryTag": params.get("projectBoundaryTag"), "createdAt": created, "updatedAt": created}
             self.state["sources"] = [src, *self.state["sources"]][:500]; self.audit("sophon.sources.add", "source", src["id"], f"Added source {name}."); self.save(); return self.state
         if method == "update_source":
@@ -917,17 +1431,81 @@ class Runtime:
         if method == "queue_ingestion":
             sid = str(params.get("sourceId") or ""); src = next((s for s in self.state["sources"] if s["id"] == sid), None)
             if src is None: raise ValueError("Source not found.")
+            existing_active_job = next(
+                (
+                    existing
+                    for existing in self.state["jobs"]
+                    if existing.get("sourceId") == sid and existing.get("status") in {"queued", "running", "paused"}
+                ),
+                None,
+            )
+            if existing_active_job is not None:
+                existing_id = str(existing_active_job.get("id") or "")
+                existing_stage = str(existing_active_job.get("currentStage") or "unknown")
+                duplicate_message = (
+                    f"Source '{src.get('name') or sid}' already has an active ingestion job "
+                    f"({existing_id}) at stage '{existing_stage}'. Duplicate queue request ignored."
+                )
+                self.append_log("warn", "ingestion", duplicate_message)
+                self.activity(duplicate_message)
+                self.save()
+                return self.state
+            source_settings = src.get("settings") or {}
+            (
+                include_configured,
+                include_effective,
+                allowed_extensions,
+                exclude_patterns,
+                auto_expanded_extensions,
+            ) = normalize_source_file_filters(source_settings)
+            if (
+                include_configured != include_effective
+                or normalize_glob_patterns(source_settings.get("excludePatterns"), fallback=["**/~$*", "**/.tmp/**"]) != exclude_patterns
+                or sorted(
+                    {
+                        normalize_extension(value)
+                        for value in (source_settings.get("allowedExtensions") or list(DEFAULT_ALLOWED_EXTENSIONS))
+                        if normalize_extension(value)
+                    }
+                )
+                != sorted(allowed_extensions)
+            ):
+                src["settings"] = {
+                    **source_settings,
+                    "includePatterns": include_effective,
+                    "excludePatterns": exclude_patterns,
+                    "allowedExtensions": sorted(allowed_extensions),
+                }
+                src["updatedAt"] = now()
+                if auto_expanded_extensions:
+                    self.append_log(
+                        "info",
+                        "ingestion",
+                        "Auto-healed source include patterns from allowedExtensions "
+                        f"for source '{src.get('name') or sid}': {auto_expanded_extensions}",
+                    )
             options = {"dryRun": bool(params.get("dryRun", False)), "safeMode": bool(params.get("safeMode", False)), "maxWorkers": max(1, min(128, intv(params.get("maxWorkers"), intv(self.state["tuning"]["maxIngestionWorkers"], 4))))}
             job = {"id": rid("job"), "sourceId": src["id"], "sourceName": src["name"], "status": "queued", "currentStage": "enumerate", "stages": [{"stage": stage, "status": "queued", "progressPct": 0, "filesProcessed": 0, "chunksProduced": 0, "errorCount": 0} for stage in STAGES], "checkpoints": [], "options": options, "startedAt": now(), "retries": 0, "discoveredFiles": 0, "processedDocuments": 0, "failedDocuments": 0, "producedChunks": 0, "blockedByPolicy": False, "validation": {"integrityPass": True, "retrievalSanityPass": True, "orphanedChunks": 0, "missingMetadataRows": 0, "warnings": [], "errors": []}}
             self.state["jobs"] = [job, *self.state["jobs"]][:5000]
-            files = self.list_files(src); job["discoveredFiles"] = len(files)
+            files, enumerate_diagnostics = self.enumerate_files(src); job["discoveredFiles"] = len(files); job["enumerateDiagnostics"] = enumerate_diagnostics
             if options["dryRun"]:
                 for stage in STAGES: self.stage(job, stage, "completed", 100)
                 job["status"] = "completed"; job["endedAt"] = now(); job["processedDocuments"] = len(files); self.save(); return self.state
             if not files:
-                include = (src.get("settings") or {}).get("includePatterns") or []
-                allowed = (src.get("settings") or {}).get("allowedExtensions") or []
-                job["status"] = "failed"; job["failureReason"] = f"No files matched source settings. Include={include}; AllowedExtensions={allowed}"; job["endedAt"] = now(); self.save(); return self.state
+                job["status"] = "failed"; job["failureReason"] = (
+                    "No files matched source settings. "
+                    f"SourcePath={enumerate_diagnostics['sourcePath']}; "
+                    f"ConfiguredSourceType={enumerate_diagnostics['configuredSourceType']}; "
+                    f"ResolvedSourceMode={enumerate_diagnostics['resolvedSourceMode']}; "
+                    f"Candidates={enumerate_diagnostics['candidateFileCount']}; "
+                    f"RejectedByInclude={enumerate_diagnostics['rejectedByInclude']}; "
+                    f"RejectedByExclude={enumerate_diagnostics['rejectedByExclude']}; "
+                    f"RejectedByExtension={enumerate_diagnostics['rejectedByExtension']}; "
+                    f"RejectedBySize={enumerate_diagnostics['rejectedBySize']}; "
+                    f"Include={enumerate_diagnostics['effectiveIncludePatterns']}; "
+                    f"AllowedExtensions={enumerate_diagnostics['allowedExtensions']}; "
+                    f"SampleRejections={enumerate_diagnostics['sampleRejections']}"
+                ); job["endedAt"] = now(); self.save(); return self.state
             if not self.bridge.ready:
                 job["status"] = "failed"; job["failureReason"] = self.bridge.err or "Bridge unavailable."; job["endedAt"] = now(); self.save(); return self.state
             self.bridge.ensure_collection()

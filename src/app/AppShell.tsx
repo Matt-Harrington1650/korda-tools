@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { createNotificationService } from '../desktop/notifications/factory';
 import { helpCenterService } from '../features/helpCenter/service';
 import { SHOW_WELCOME_MODAL_EVENT } from '../features/helpCenter/welcome';
+import { isTauriRuntime } from '../lib/runtime';
+import { tauriEvent, tauriInvoke } from '../lib/tauri';
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -37,6 +40,56 @@ export function AppShell() {
     window.addEventListener(SHOW_WELCOME_MODAL_EVENT, handleShowWelcome);
     return () => {
       window.removeEventListener(SHOW_WELCOME_MODAL_EVENT, handleShowWelcome);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return undefined;
+    }
+
+    let active = true;
+    let unlisten: Array<() => void> = [];
+    const notificationService = createNotificationService();
+
+    void (async () => {
+      const eventApi = await tauriEvent();
+      const listeners = await Promise.all([
+        eventApi.listen<{ activeJobCount: number }>('sophon://ingest/quit-warning', async (event) => {
+          const activeJobCount = Number(event.payload?.activeJobCount ?? 0);
+          const confirmed = window.confirm(
+            `There ${activeJobCount === 1 ? 'is' : 'are'} ${activeJobCount} active SOPHON ingestion ${
+              activeJobCount === 1 ? 'job' : 'jobs'
+            }. Quitting Korda Tools will stop background supervision. Quit anyway?`,
+          );
+          if (!confirmed) {
+            return;
+          }
+          await tauriInvoke<void>('ingest_force_exit');
+        }),
+        eventApi.listen<{ activeJobCount: number }>('sophon://ingest/window-hidden', (event) => {
+          const activeJobCount = Number(event.payload?.activeJobCount ?? 0);
+          void notificationService.notify(
+            'Korda Tools is still running',
+            `SOPHON is still supervising ${activeJobCount} active ingestion ${activeJobCount === 1 ? 'job' : 'jobs'} in the background.`,
+          );
+        }),
+      ]);
+
+      if (!active) {
+        listeners.forEach((listener) => {
+          listener();
+        });
+        return;
+      }
+      unlisten = listeners;
+    })();
+
+    return () => {
+      active = false;
+      unlisten.forEach((listener) => {
+        listener();
+      });
     };
   }, []);
 

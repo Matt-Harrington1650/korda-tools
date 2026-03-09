@@ -27,7 +27,8 @@
     "active": true,
     "createUpdaterArtifacts": false,
     "resources": [
-      "scripts/sophon_runtime_worker.py"
+      "scripts/sophon_runtime_worker.py",
+      "scripts/sophon_ingest_worker.py"
     ],
     "targets": [
       "nsis"

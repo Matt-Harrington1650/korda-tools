@@ -1,5 +1,5 @@
 Sophon Retrieval Query Evaluation
-Generated: 2026-03-07T14:34:30.687Z
+Generated: 2026-03-09T14:19:05.984Z
 Queries: 10
 Top-k comparison (2 vs 20): 1 vs 1
 Changed: false

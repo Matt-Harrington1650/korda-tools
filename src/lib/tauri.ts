@@ -21,6 +21,11 @@ export async function tauriCore(): Promise<typeof import('@tauri-apps/api/core')
   return import('@tauri-apps/api/core');
 }
 
+export async function tauriEvent(): Promise<typeof import('@tauri-apps/api/event')> {
+  assertTauriRuntime();
+  return import('@tauri-apps/api/event');
+}
+
 export async function tauriUpdater(): Promise<typeof import('@tauri-apps/plugin-updater')> {
   assertTauriRuntime();
   return import('@tauri-apps/plugin-updater');

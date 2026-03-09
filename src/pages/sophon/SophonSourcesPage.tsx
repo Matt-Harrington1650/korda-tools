@@ -1,24 +1,74 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { CheckboxGroupField, SegmentedControl } from '../../components/structured';
+import { ingestQueueSource } from '../../features/sophon/ingest/api';
 import { useSophonStore } from '../../features/sophon/store/sophonStore';
-import type { SophonSourceType } from '../../features/sophon/types';
+import type { SophonSensitivity, SophonSourceType } from '../../features/sophon/types';
+
+const SUPPORTED_EXTENSION_OPTIONS = [
+  { value: '.pdf', label: 'PDF' },
+  { value: '.docx', label: 'DOCX' },
+  { value: '.dwg', label: 'DWG' },
+  { value: '.dxf', label: 'DXF' },
+  { value: '.ifc', label: 'IFC' },
+  { value: '.xlsx', label: 'XLSX' },
+  { value: '.csv', label: 'CSV' },
+  { value: '.txt', label: 'TXT' },
+  { value: '.jpg', label: 'JPG' },
+  { value: '.png', label: 'PNG' },
+  { value: '.md', label: 'Markdown' },
+] as const;
+
+const SOURCE_TYPE_OPTIONS: Array<{ value: SophonSourceType; label: string }> = [
+  { value: 'folder', label: 'Folder' },
+  { value: 'file', label: 'Single File' },
+  { value: 'project_vault', label: 'Project Vault' },
+];
+
+const SENSITIVITY_OPTIONS: Array<{ value: SophonSensitivity; label: string }> = [
+  { value: 'Public', label: 'Public' },
+  { value: 'Internal', label: 'Internal' },
+  { value: 'Confidential', label: 'Confidential' },
+  { value: 'Client-Confidential', label: 'Client Confidential' },
+];
+
+type ScanDepth = 'root' | 'recursive';
 
 export function SophonSourcesPage() {
   const sources = useSophonStore((store) => store.state.sources);
   const addSource = useSophonStore((store) => store.addSource);
   const removeSource = useSophonStore((store) => store.removeSource);
-  const queueIngestion = useSophonStore((store) => store.queueIngestion);
+  const queryClient = useQueryClient();
 
   const [sourceType, setSourceType] = useState<SophonSourceType>('folder');
+  const [scanDepth, setScanDepth] = useState<ScanDepth>('recursive');
   const [name, setName] = useState('');
   const [path, setPath] = useState('');
-  const [includePatterns, setIncludePatterns] = useState('*.pdf,*.docx,**/*.pdf,**/*.docx');
-  const [excludePatterns, setExcludePatterns] = useState('**/tmp/**,**/~$*');
-  const [extensions, setExtensions] = useState('.pdf,.docx,.dwg,.dxf,.ifc,.xlsx,.csv,.txt,.jpg,.png');
+  const [selectedExtensions, setSelectedExtensions] = useState<string[]>(
+    SUPPORTED_EXTENSION_OPTIONS.map((option) => option.value),
+  );
+  const [excludeTempFolders, setExcludeTempFolders] = useState(true);
+  const [excludeOfficeTemp, setExcludeOfficeTemp] = useState(true);
   const [watchEnabled, setWatchEnabled] = useState(false);
+  const [sensitivity, setSensitivity] = useState<SophonSensitivity>('Internal');
+  const [ocrEnabled, setOcrEnabled] = useState(true);
+  const [extractionEnabled, setExtractionEnabled] = useState(true);
+  const [pageAwareChunking, setPageAwareChunking] = useState(true);
   const [dryRun, setDryRun] = useState(false);
   const [safeMode, setSafeMode] = useState(false);
   const [formError, setFormError] = useState('');
   const [formMessage, setFormMessage] = useState('');
+  const queueMutation = useMutation({
+    mutationFn: ingestQueueSource,
+    onSuccess: (result, variables) => {
+      setFormError('');
+      setFormMessage(`Queued "${variables.source.name}" as ${result.jobId} (${result.discoveredFiles} file(s)).`);
+      void queryClient.invalidateQueries({ queryKey: ['sophon', 'ingest'] });
+    },
+    onError: (error) => {
+      setFormError(error instanceof Error ? error.message : 'Failed to queue ingestion.');
+    },
+  });
 
   const sourceCount = sources.length;
   const watchCount = useMemo(() => sources.filter((item) => item.settings.watchEnabled).length, [sources]);
@@ -27,13 +77,25 @@ export function SophonSourcesPage() {
   const duplicateSourceExists = sources.some(
     (item) => item.name.trim().toLowerCase() === normalizedName || normalizePath(item.path) === normalizedPath,
   );
+  const generatedIncludePatterns = useMemo(
+    () => buildIncludePatterns(selectedExtensions, scanDepth === 'recursive'),
+    [scanDepth, selectedExtensions],
+  );
+  const generatedExcludePatterns = useMemo(
+    () => buildExcludePatterns(excludeTempFolders, excludeOfficeTemp),
+    [excludeOfficeTemp, excludeTempFolders],
+  );
+  const uniqueKnownPaths = useMemo(
+    () => Array.from(new Set(sources.map((source) => source.path.trim()).filter((value) => value.length > 0))),
+    [sources],
+  );
 
   const saveSource = (): void => {
     const trimmedName = name.trim();
     const trimmedPath = path.trim();
-    const include = splitList(includePatterns);
-    const exclude = splitList(excludePatterns);
-    const allowedExtensions = splitExtensions(extensions);
+    const allowedExtensions = normalizeExtensions(selectedExtensions);
+    const include = buildIncludePatterns(allowedExtensions, scanDepth === 'recursive');
+    const exclude = buildExcludePatterns(excludeTempFolders, excludeOfficeTemp);
 
     if (!trimmedName || !trimmedPath) {
       setFormError('Name and path are required before saving a source.');
@@ -65,13 +127,13 @@ export function SophonSourcesPage() {
       watchEnabled,
       chunkSize: 1024,
       chunkOverlap: 150,
-      ocrEnabled: true,
-      extractionEnabled: true,
-      pageAwareChunking: true,
+      ocrEnabled,
+      extractionEnabled,
+      pageAwareChunking,
       maxFileSizeMb: 1024,
       maxPages: 5000,
       tags: ['sophon', 'ingestion'],
-      sensitivity: 'Internal',
+      sensitivity,
     });
     setName('');
     setPath('');
@@ -84,24 +146,29 @@ export function SophonSourcesPage() {
       <section className="kt-panel p-4 xl:col-span-2">
         <h3 className="kt-title-lg">Add Source</h3>
         <p className="mt-1 text-xs text-[color:var(--kt-text-muted)]">
-          Configure source rules for enumerate, extract, chunk, embed, index, validate, publish.
+          Structured source setup with generated include/exclude rules and explicit supported file types.
         </p>
         <div className="mt-3 space-y-3">
-          <label className="space-y-1">
-            <span className="kt-title-sm">Source Type</span>
-            <select
-              className="kt-select"
-              onChange={(event) => {
-                setSourceType(event.target.value as SophonSourceType);
-                setFormError('');
-              }}
-              value={sourceType}
-            >
-              <option value="folder">Folder (Recursive)</option>
-              <option value="file">Single File</option>
-              <option value="project_vault">Project Vault</option>
-            </select>
-          </label>
+          <SegmentedControl
+            label="Source Type"
+            onChange={(value) => {
+              setSourceType(value);
+              setFormError('');
+            }}
+            options={SOURCE_TYPE_OPTIONS}
+            value={sourceType}
+          />
+          {sourceType !== 'file' ? (
+            <SegmentedControl
+              label="Scan Depth"
+              onChange={setScanDepth}
+              options={[
+                { value: 'root', label: 'Top Level' },
+                { value: 'recursive', label: 'Recursive' },
+              ]}
+              value={scanDepth}
+            />
+          ) : null}
           <label className="space-y-1">
             <span className="kt-title-sm">Name</span>
             <input
@@ -121,43 +188,106 @@ export function SophonSourcesPage() {
                 setPath(event.target.value);
                 setFormError('');
               }}
-              placeholder="D:\\KORDA\\Projects\\EPC-A"
+              list="sophon-known-source-paths"
+              placeholder={sourceType === 'file' ? 'C:\\Projects\\Atlas\\basis-of-design.md' : 'D:\\KORDA\\Projects\\EPC-A'}
               value={path}
             />
+            <datalist id="sophon-known-source-paths">
+              {uniqueKnownPaths.map((knownPath) => (
+                <option key={knownPath} value={knownPath} />
+              ))}
+            </datalist>
+            <p className="text-xs text-[color:var(--kt-text-muted)]">
+              Path entry remains freeform because this runtime does not expose a reliable absolute folder/file picker path across all targets.
+            </p>
           </label>
+          <CheckboxGroupField
+            helperText="Only checked extensions are discoverable during enumerate."
+            legend="Allowed File Types"
+            onChange={(nextValues) => {
+              setSelectedExtensions(nextValues);
+              setFormError('');
+            }}
+            options={SUPPORTED_EXTENSION_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+            selectedValues={selectedExtensions}
+          />
+          <fieldset className="space-y-2">
+            <legend className="kt-title-sm">Exclude Rules</legend>
+            <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
+              <input
+                checked={excludeTempFolders}
+                className="kt-checkbox"
+                onChange={(event) => {
+                  setExcludeTempFolders(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              Exclude temporary folders (`tmp`, `.tmp`)
+            </label>
+            <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
+              <input
+                checked={excludeOfficeTemp}
+                className="kt-checkbox"
+                onChange={(event) => {
+                  setExcludeOfficeTemp(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              Exclude Office temporary files (`~$*`)
+            </label>
+          </fieldset>
           <label className="space-y-1">
-            <span className="kt-title-sm">Include Patterns</span>
-            <input
-              className="kt-input"
+            <span className="kt-title-sm">Sensitivity</span>
+            <select
+              className="kt-select"
               onChange={(event) => {
-                setIncludePatterns(event.target.value);
-                setFormError('');
+                setSensitivity(event.target.value as SophonSensitivity);
               }}
-              value={includePatterns}
-            />
+              value={sensitivity}
+            >
+              {SENSITIVITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="space-y-1">
-            <span className="kt-title-sm">Exclude Patterns</span>
-            <input
-              className="kt-input"
-              onChange={(event) => {
-                setExcludePatterns(event.target.value);
-                setFormError('');
-              }}
-              value={excludePatterns}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="kt-title-sm">Allowed Extensions</span>
-            <input
-              className="kt-input"
-              onChange={(event) => {
-                setExtensions(event.target.value);
-                setFormError('');
-              }}
-              value={extensions}
-            />
-          </label>
+          <fieldset className="space-y-2">
+            <legend className="kt-title-sm">Processing Flags</legend>
+            <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
+              <input
+                checked={ocrEnabled}
+                className="kt-checkbox"
+                onChange={(event) => {
+                  setOcrEnabled(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              Enable OCR
+            </label>
+            <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
+              <input
+                checked={extractionEnabled}
+                className="kt-checkbox"
+                onChange={(event) => {
+                  setExtractionEnabled(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              Enable extraction
+            </label>
+            <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
+              <input
+                checked={pageAwareChunking}
+                className="kt-checkbox"
+                onChange={(event) => {
+                  setPageAwareChunking(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              Enable page-aware chunking
+            </label>
+          </fieldset>
           <label className="kt-panel-muted flex items-center gap-2 px-3 py-2 text-sm text-[color:var(--kt-text-secondary)]">
             <input
               className="kt-checkbox"
@@ -169,6 +299,12 @@ export function SophonSourcesPage() {
             />
             Enable watch mode (periodic scan + debounce)
           </label>
+          <div className="kt-panel-muted px-3 py-2 text-xs text-[color:var(--kt-text-muted)]">
+            <p className="font-medium text-[color:var(--kt-text-secondary)]">Generated Include Patterns</p>
+            <p className="mt-1">{generatedIncludePatterns.join(', ') || 'None'}</p>
+            <p className="mt-2 font-medium text-[color:var(--kt-text-secondary)]">Generated Exclude Patterns</p>
+            <p className="mt-1">{generatedExcludePatterns.join(', ') || 'None'}</p>
+          </div>
           <button
             className="kt-btn kt-btn-primary w-full"
             onClick={saveSource}
@@ -237,15 +373,19 @@ export function SophonSourcesPage() {
                   <button
                     className="kt-btn kt-btn-primary"
                     onClick={() => {
-                      queueIngestion({
-                        sourceId: source.id,
-                        dryRun,
-                        safeMode,
+                      setFormError('');
+                      queueMutation.mutate({
+                        source,
+                        options: {
+                          dryRun,
+                          safeMode,
+                          maxWorkers: 1,
+                        },
                       });
                     }}
                     type="button"
                   >
-                    Queue Ingestion
+                    {queueMutation.isPending ? 'Queueing...' : 'Queue Ingestion'}
                   </button>
                   <button
                     className="kt-btn kt-btn-danger"
@@ -282,13 +422,39 @@ export function SophonSourcesPage() {
   );
 }
 
-const splitList = (value: string): string[] =>
-  value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+const normalizeExtensions = (values: string[]): string[] => {
+  const unique = new Set<string>();
+  values
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0)
+    .forEach((item) => {
+      unique.add(item.startsWith('.') ? item : `.${item}`);
+    });
+  return Array.from(unique);
+};
 
-const splitExtensions = (value: string): string[] =>
-  splitList(value).map((item) => (item.startsWith('.') ? item.toLowerCase() : `.${item.toLowerCase()}`));
+const buildIncludePatterns = (extensions: string[], recursive: boolean): string[] => {
+  if (extensions.length === 0) {
+    return [];
+  }
+
+  const patterns = extensions.flatMap((extension) => {
+    const suffix = extension.startsWith('.') ? extension.slice(1) : extension;
+    const rootPattern = `*.${suffix}`;
+    return recursive ? [rootPattern, `**/*.${suffix}`] : [rootPattern];
+  });
+  return Array.from(new Set(patterns));
+};
+
+const buildExcludePatterns = (excludeTempFolders: boolean, excludeOfficeTemp: boolean): string[] => {
+  const patterns: string[] = [];
+  if (excludeTempFolders) {
+    patterns.push('**/tmp/**', '**/.tmp/**');
+  }
+  if (excludeOfficeTemp) {
+    patterns.push('**/~$*');
+  }
+  return patterns;
+};
 
 const normalizePath = (value: string): string => value.trim().replaceAll('\\', '/').toLowerCase();

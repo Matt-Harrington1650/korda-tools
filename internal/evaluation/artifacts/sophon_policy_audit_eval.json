@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-03-07T14:34:30.662Z",
+  "generatedAt": "2026-03-09T14:19:06.023Z",
   "roleAfterSwitch": "viewer",
   "blockedEgressAttempts": [
     {
-      "id": "egress-1264d343-3af7-42d5-8ec8-6b23b6e29c79",
+      "id": "egress-c87d1dd6-8e0a-4fbf-9bb0-e7c42065772d",
       "attemptedTarget": "https://blocked.example/sensitive-egress-check",
       "reason": "SOPHON_EGRESS_BLOCK_REQUIRED",
-      "blockedAt": "2026-03-07T14:34:30.661Z"
+      "blockedAt": "2026-03-09T14:19:06.018Z"
     }
   ],
   "blockedEgressCount": 1,

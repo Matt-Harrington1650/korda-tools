@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
@@ -217,6 +217,31 @@ fn resolve_positive_env_or_default(key: &str, default_value: &str) -> String {
         .unwrap_or_else(|| default_value.to_string())
 }
 
+fn resolve_worker_temp_dir(app_data_dir: &Path) -> Result<String, String> {
+    if let Ok(explicit) = std::env::var("TEMP_DIR") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            let explicit_path = PathBuf::from(trimmed);
+            fs::create_dir_all(&explicit_path).map_err(|error| {
+                format!(
+                    "failed to create TEMP_DIR for Sophon runtime ({}): {error}",
+                    explicit_path.to_string_lossy()
+                )
+            })?;
+            return Ok(explicit_path.to_string_lossy().to_string());
+        }
+    }
+
+    let fallback = app_data_dir.join("sophon-tmp");
+    fs::create_dir_all(&fallback).map_err(|error| {
+        format!(
+            "failed to create fallback temp dir for Sophon runtime ({}): {error}",
+            fallback.to_string_lossy()
+        )
+    })?;
+    Ok(fallback.to_string_lossy().to_string())
+}
+
 fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
     let script_path = resolve_worker_script_path(app)?;
     let app_data_dir = app
@@ -225,6 +250,7 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
         .map_err(|error| format!("failed to resolve app_data_dir: {error}"))?;
     fs::create_dir_all(&app_data_dir)
         .map_err(|error| format!("failed to create app_data_dir for Sophon runtime: {error}"))?;
+    let temp_dir = resolve_worker_temp_dir(&app_data_dir)?;
 
     let script_arg = script_path.to_string_lossy().to_string();
     let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
@@ -289,6 +315,10 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::inherit());
         command.env("SOPHON_APP_DATA_DIR", app_data_dir.as_os_str());
+        command.env("TEMP_DIR", &temp_dir);
+        command.env("TMPDIR", &temp_dir);
+        command.env("TMP", &temp_dir);
+        command.env("TEMP", &temp_dir);
         if let Some(korda_rag_src) = resolve_korda_rag_src() {
             command.env("SOPHON_KORDA_RAG_SRC", korda_rag_src.as_os_str());
         }

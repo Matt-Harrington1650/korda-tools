@@ -1,0 +1,1 @@
+Service voltage is 480Y/277 V. Generator runtime is 24 hours.

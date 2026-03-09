@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-03-07T14:34:30.717Z",
+  "exportedAt": "2026-03-09T14:19:06.044Z",
   "module": "Sophon",
   "version": 1,
   "state": {
@@ -14,7 +14,7 @@
       "diskUsagePct": 0,
       "queueDepth": 0,
       "activeWorkers": 0,
-      "lastHealthCheckAt": "2026-03-07T14:34:30.689Z"
+      "lastHealthCheckAt": "2026-03-09T14:19:06.002Z"
     },
     "role": "admin",
     "offlineOnlyEnforced": true,
@@ -23,7 +23,7 @@
     "crossClientMixingPrevented": true,
     "sources": [
       {
-        "id": "source-27241200-e847-4c11-a848-ba5120be5950",
+        "id": "source-9fd3e308-6e0c-4479-bdd9-dd32e500781e",
         "sourceType": "folder",
         "name": "Fixture Source",
         "path": "C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures",
@@ -73,15 +73,15 @@
           "sophon"
         ],
         "sensitivity": "Internal",
-        "createdAt": "2026-03-07T14:34:30.688Z",
-        "updatedAt": "2026-03-07T14:34:30.688Z",
-        "lastIngestedAt": "2026-03-07T14:34:30.697Z"
+        "createdAt": "2026-03-09T14:19:06.001Z",
+        "updatedAt": "2026-03-09T14:19:06.001Z",
+        "lastIngestedAt": "2026-03-09T14:19:06.028Z"
       }
     ],
     "jobs": [
       {
-        "id": "job-0b713428-46c3-4b50-94ac-1f2ed324dfdb",
-        "sourceId": "source-27241200-e847-4c11-a848-ba5120be5950",
+        "id": "job-e7c6104b-fde2-4e67-8599-512f39844cec",
+        "sourceId": "source-9fd3e308-6e0c-4479-bdd9-dd32e500781e",
         "sourceName": "Fixture Source",
         "status": "completed",
         "currentStage": "publish",
@@ -93,8 +93,8 @@
             "filesProcessed": 14,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.691Z",
-            "endedAt": "2026-03-07T14:34:30.693Z",
+            "startedAt": "2026-03-09T14:19:06.009Z",
+            "endedAt": "2026-03-09T14:19:06.012Z",
             "latencyMs": 420
           },
           {
@@ -104,8 +104,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.693Z",
-            "endedAt": "2026-03-07T14:34:30.693Z",
+            "startedAt": "2026-03-09T14:19:06.012Z",
+            "endedAt": "2026-03-09T14:19:06.016Z",
             "latencyMs": 840
           },
           {
@@ -115,8 +115,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.693Z",
-            "endedAt": "2026-03-07T14:34:30.694Z",
+            "startedAt": "2026-03-09T14:19:06.016Z",
+            "endedAt": "2026-03-09T14:19:06.017Z",
             "latencyMs": 1260
           },
           {
@@ -126,8 +126,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.694Z",
-            "endedAt": "2026-03-07T14:34:30.694Z",
+            "startedAt": "2026-03-09T14:19:06.017Z",
+            "endedAt": "2026-03-09T14:19:06.022Z",
             "latencyMs": 1680
           },
           {
@@ -137,8 +137,8 @@
             "filesProcessed": 0,
             "chunksProduced": 84,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.694Z",
-            "endedAt": "2026-03-07T14:34:30.695Z",
+            "startedAt": "2026-03-09T14:19:06.022Z",
+            "endedAt": "2026-03-09T14:19:06.023Z",
             "latencyMs": 2100
           },
           {
@@ -148,8 +148,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.695Z",
-            "endedAt": "2026-03-07T14:34:30.695Z",
+            "startedAt": "2026-03-09T14:19:06.023Z",
+            "endedAt": "2026-03-09T14:19:06.026Z",
             "latencyMs": 2520
           },
           {
@@ -159,8 +159,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.695Z",
-            "endedAt": "2026-03-07T14:34:30.696Z",
+            "startedAt": "2026-03-09T14:19:06.026Z",
+            "endedAt": "2026-03-09T14:19:06.027Z",
             "latencyMs": 2940
           },
           {
@@ -170,8 +170,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.696Z",
-            "endedAt": "2026-03-07T14:34:30.696Z",
+            "startedAt": "2026-03-09T14:19:06.027Z",
+            "endedAt": "2026-03-09T14:19:06.027Z",
             "latencyMs": 3360
           },
           {
@@ -181,8 +181,8 @@
             "filesProcessed": 0,
             "chunksProduced": 0,
             "errorCount": 0,
-            "startedAt": "2026-03-07T14:34:30.696Z",
-            "endedAt": "2026-03-07T14:34:30.697Z",
+            "startedAt": "2026-03-09T14:19:06.027Z",
+            "endedAt": "2026-03-09T14:19:06.028Z",
             "latencyMs": 3780
           }
         ],
@@ -190,47 +190,47 @@
           {
             "stage": "enumerate",
             "cursor": "done:enumerate",
-            "persistedAt": "2026-03-07T14:34:30.693Z"
+            "persistedAt": "2026-03-09T14:19:06.012Z"
           },
           {
             "stage": "classify",
             "cursor": "done:classify",
-            "persistedAt": "2026-03-07T14:34:30.693Z"
+            "persistedAt": "2026-03-09T14:19:06.016Z"
           },
           {
             "stage": "extract",
             "cursor": "done:extract",
-            "persistedAt": "2026-03-07T14:34:30.694Z"
+            "persistedAt": "2026-03-09T14:19:06.017Z"
           },
           {
             "stage": "normalize",
             "cursor": "done:normalize",
-            "persistedAt": "2026-03-07T14:34:30.694Z"
+            "persistedAt": "2026-03-09T14:19:06.022Z"
           },
           {
             "stage": "chunk",
             "cursor": "done:chunk",
-            "persistedAt": "2026-03-07T14:34:30.695Z"
+            "persistedAt": "2026-03-09T14:19:06.023Z"
           },
           {
             "stage": "embed",
             "cursor": "done:embed",
-            "persistedAt": "2026-03-07T14:34:30.695Z"
+            "persistedAt": "2026-03-09T14:19:06.026Z"
           },
           {
             "stage": "index",
             "cursor": "done:index",
-            "persistedAt": "2026-03-07T14:34:30.696Z"
+            "persistedAt": "2026-03-09T14:19:06.027Z"
           },
           {
             "stage": "validate",
             "cursor": "done:validate",
-            "persistedAt": "2026-03-07T14:34:30.696Z"
+            "persistedAt": "2026-03-09T14:19:06.027Z"
           },
           {
             "stage": "publish",
             "cursor": "done:publish",
-            "persistedAt": "2026-03-07T14:34:30.697Z"
+            "persistedAt": "2026-03-09T14:19:06.028Z"
           }
         ],
         "options": {
@@ -238,7 +238,7 @@
           "safeMode": true,
           "maxWorkers": 4
         },
-        "startedAt": "2026-03-07T14:34:30.690Z",
+        "startedAt": "2026-03-09T14:19:06.007Z",
         "retries": 0,
         "discoveredFiles": 14,
         "processedDocuments": 14,
@@ -253,7 +253,7 @@
           "warnings": [],
           "errors": []
         },
-        "endedAt": "2026-03-07T14:34:30.697Z"
+        "endedAt": "2026-03-09T14:19:06.028Z"
       }
     ],
     "index": {
@@ -263,7 +263,7 @@
       "integrityStatus": "healthy",
       "revision": 2,
       "snapshots": [],
-      "lastUpdatedAt": "2026-03-07T14:34:30.697Z"
+      "lastUpdatedAt": "2026-03-09T14:19:06.028Z"
     },
     "tuning": {
       "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",
@@ -280,15 +280,15 @@
     "metrics": [],
     "logs": [
       {
-        "id": "log-99840575-af35-4a8a-bd88-af7f2e6233e0",
-        "ts": "2026-03-07T14:34:30.697Z",
+        "id": "log-a467c20a-4829-4e0e-b39f-b660ab42e7cd",
+        "ts": "2026-03-09T14:19:06.030Z",
         "severity": "info",
         "source": "ingestion",
         "message": "1 job(s) completed."
       },
       {
-        "id": "log-ef3ffe71-c945-4f53-a366-13ea709e6d4e",
-        "ts": "2026-03-07T14:34:30.689Z",
+        "id": "log-9108d2e2-465f-4584-a193-b19672ed58ed",
+        "ts": "2026-03-09T14:19:06.002Z",
         "severity": "info",
         "source": "runtime",
         "message": "Runtime started without HTTP listeners."
@@ -296,8 +296,8 @@
     ],
     "audit": [
       {
-        "id": "audit-f192f0dc-e90b-4352-88e9-7736ae4b7832",
-        "eventTsUtc": "2026-03-07T14:34:30.689Z",
+        "id": "audit-6c39c64b-0a50-4ce0-99d2-3d12d35319ba",
+        "eventTsUtc": "2026-03-09T14:19:06.003Z",
         "actorId": "local-admin",
         "action": "sophon.runtime.start",
         "entityType": "runtime",
@@ -306,21 +306,21 @@
         "severity": "info"
       },
       {
-        "id": "audit-1e037613-634f-47b6-92fb-d7938ea47d51",
-        "eventTsUtc": "2026-03-07T14:34:30.688Z",
+        "id": "audit-e284e562-a169-4265-a148-85f6cade9409",
+        "eventTsUtc": "2026-03-09T14:19:06.001Z",
         "actorId": "local-admin",
         "action": "sophon.sources.add",
         "entityType": "source",
-        "entityId": "source-27241200-e847-4c11-a848-ba5120be5950",
+        "entityId": "source-9fd3e308-6e0c-4479-bdd9-dd32e500781e",
         "details": "Added source \"Fixture Source\"",
         "severity": "info"
       }
     ],
     "activity": [
-      "2026-03-07T14:34:30.697Z 1 ingestion job(s) completed.",
-      "2026-03-07T14:34:30.690Z Ingestion queued for source Fixture Source.",
-      "2026-03-07T14:34:30.689Z Runtime started.",
-      "2026-03-07T14:34:30.688Z Source added: Fixture Source."
+      "2026-03-09T14:19:06.030Z 1 ingestion job(s) completed.",
+      "2026-03-09T14:19:06.007Z Ingestion queued for source Fixture Source.",
+      "2026-03-09T14:19:06.002Z Runtime started.",
+      "2026-03-09T14:19:06.001Z Source added: Fixture Source."
     ],
     "lastRetrieval": {
       "query": "Summarize indexed fixture content and include source grounding.",
@@ -332,7 +332,7 @@
           "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
         }
       ],
-      "generatedAt": "2026-03-07T14:34:30.698Z"
+      "generatedAt": "2026-03-09T14:19:06.031Z"
     }
   }
 }

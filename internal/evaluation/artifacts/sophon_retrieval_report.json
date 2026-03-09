@@ -1,6 +1,6 @@
 {
   "module": "Sophon Retrieval Lab",
-  "generatedAt": "2026-03-07T14:34:30.698Z",
+  "generatedAt": "2026-03-09T14:19:06.033Z",
   "retrieval": {
     "query": "Summarize indexed fixture content and include source grounding.",
     "answer": "Sophon retrieved 1 grounded passage(s) for \"Summarize indexed fixture content and include source grounding.\".",
@@ -11,7 +11,7 @@
         "content": "Source=C:\\code\\ai-tool-hub\\internal\\evaluation\\fixtures; patterns=**/*.pdf,**/*.txt,**/*.md,**/*.docx; chunk=1024/150; sensitivity=Internal"
       }
     ],
-    "generatedAt": "2026-03-07T14:34:30.698Z"
+    "generatedAt": "2026-03-09T14:19:06.031Z"
   },
   "index": {
     "docCount": 14,
@@ -20,7 +20,7 @@
     "integrityStatus": "healthy",
     "revision": 2,
     "snapshots": [],
-    "lastUpdatedAt": "2026-03-07T14:34:30.697Z"
+    "lastUpdatedAt": "2026-03-09T14:19:06.028Z"
   },
   "tuning": {
     "embeddingModel": "nvidia/llama-3.2-nv-embedqa-1b-v2",

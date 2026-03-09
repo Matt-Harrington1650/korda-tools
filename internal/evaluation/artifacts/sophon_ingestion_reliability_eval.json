@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-03-07T14:34:30.657Z",
-  "sourceId": "source-2bb4307e-5e5f-4601-b929-6274b6944fa9",
+  "generatedAt": "2026-03-09T14:19:06.011Z",
+  "sourceId": "source-b132b3ec-aaa9-402c-b193-a691426fa5b4",
   "sourceSettings": {
     "includePatterns": [
       "**/*.pdf",
@@ -43,13 +43,13 @@
     "extractionEnabled": true
   },
   "firstJob": {
-    "id": "job-f0eb4ad8-c068-46c9-a761-2826f63b84d8",
+    "id": "job-c81fd770-a787-4865-af34-27cad61aad6a",
     "pausedStatus": "paused",
     "resumedStatus": "queued",
     "finalStatus": "completed"
   },
   "retryFlow": {
-    "cancelledJobId": "job-978e18b4-d2ce-4de5-8b24-f22e8dcf6a1d",
+    "cancelledJobId": "job-3e01db48-9400-4382-9d3b-e6f576bbe713",
     "retryJobId": null,
     "retryJobStatus": null
   },

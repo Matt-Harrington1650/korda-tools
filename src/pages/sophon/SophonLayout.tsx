@@ -1,4 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet } from 'react-router-dom';
+import {
+  ingestGetHealthSnapshot,
+  ingestListJobs,
+  useSophonIngestLiveBridge,
+} from '../../features/sophon/ingest/api';
 import { useSophonStore } from '../../features/sophon/store/sophonStore';
 
 const SOPHON_TABS = [
@@ -19,6 +25,20 @@ const navClass = ({ isActive }: { isActive: boolean }): string => {
 
 export function SophonLayout() {
   const state = useSophonStore((store) => store.state);
+  useSophonIngestLiveBridge();
+  const jobsQuery = useQuery({
+    queryKey: ['sophon', 'ingest', 'jobs'],
+    queryFn: ingestListJobs,
+  });
+  const healthQuery = useQuery({
+    queryKey: ['sophon', 'ingest', 'health'],
+    queryFn: ingestGetHealthSnapshot,
+  });
+  const liveQueueDepth =
+    jobsQuery.data?.filter((job) => ['queued', 'running', 'paused', 'blocked', 'stuck'].includes(job.status)).length ??
+    state.runtime.queueDepth;
+  const liveAlertCount = jobsQuery.data?.reduce((sum, job) => sum + job.activeAlerts, 0) ?? 0;
+  const healthStatus = healthQuery.data?.overallStatus ?? 'unknown';
 
   return (
     <div className="space-y-4">
@@ -37,15 +57,15 @@ export function SophonLayout() {
             </div>
             <div className="kt-kv">
               <p className="kt-title-sm">Queue</p>
-              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.runtime.queueDepth}</p>
+              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{liveQueueDepth}</p>
             </div>
             <div className="kt-kv">
-              <p className="kt-title-sm">Index Docs</p>
-              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.index.docCount}</p>
+              <p className="kt-title-sm">Ingest Health</p>
+              <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--kt-text-primary)]">{healthStatus}</p>
             </div>
             <div className="kt-kv">
-              <p className="kt-title-sm">Egress Blocks</p>
-              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{state.blockedEgressAttempts.length}</p>
+              <p className="kt-title-sm">Open Alerts</p>
+              <p className="mt-1 text-sm font-semibold text-[color:var(--kt-text-primary)]">{liveAlertCount}</p>
             </div>
           </div>
         </div>
