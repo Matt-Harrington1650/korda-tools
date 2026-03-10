@@ -715,7 +715,7 @@ fn normalize_tags(tags: &[String]) -> ToolsResult<Vec<String>> {
         }
     }
 
-    normalized.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+    normalized.sort_by_key(|left| left.to_ascii_lowercase());
     Ok(normalized)
 }
 

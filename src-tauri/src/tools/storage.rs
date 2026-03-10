@@ -169,8 +169,6 @@ pub fn sanitize_filename(original_name: &str) -> ToolsResult<String> {
         .map(|character| {
             if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
                 character
-            } else if character.is_whitespace() {
-                '_'
             } else {
                 '_'
             }

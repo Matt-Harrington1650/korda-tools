@@ -133,7 +133,7 @@ export function AppShell() {
 
         <div className="flex min-h-screen flex-1 flex-col">
           <header className="flex h-14 items-center border-b border-slate-200 bg-white px-4">
-            <span className="text-sm font-medium text-slate-600">AI Tool Hub Desktop</span>
+            <span className="text-sm font-medium text-slate-600">Korda Tools Desktop</span>
           </header>
           <main className="flex-1 p-4 md:p-6">
             <Outlet />
@@ -145,7 +145,7 @@ export function AppShell() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
           <section className="w-full max-w-lg space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">Welcome to AI Tool Hub</h2>
+              <h2 className="text-xl font-semibold text-slate-900">Welcome to Korda Tools</h2>
               <p className="mt-2 text-sm text-slate-600">
                 This app manages local tool metadata, workflow automation, and versioned custom tool packages. Start with the Help Center for setup and workflow guidance.
               </p>
