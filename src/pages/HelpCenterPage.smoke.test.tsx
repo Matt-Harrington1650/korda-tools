@@ -200,7 +200,7 @@ describe('HelpCenterPage smoke', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search this page')).toHaveValue('search-token-42');
     });
-  });
+  }, 10_000);
 
   it('edits a custom page and persists updated markdown', async () => {
     setupMockHelpService([

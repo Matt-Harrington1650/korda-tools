@@ -3,10 +3,12 @@ use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::MenuBuilder;
 use tauri::tray::TrayIconBuilder;
@@ -29,6 +31,26 @@ const TRAY_SHOW_ID: &str = "tray_show_main";
 const TRAY_QUIT_ID: &str = "tray_quit_app";
 
 static SUPERVISOR_STATE: OnceLock<Arc<IngestSupervisorState>> = OnceLock::new();
+
+fn spawn_worker_stderr_logger(stderr: ChildStderr, target: &'static str) {
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(message) => {
+                    let trimmed = message.trim();
+                    if !trimmed.is_empty() {
+                        log::warn!(target: target, "{trimmed}");
+                    }
+                }
+                Err(error) => {
+                    log::warn!(target: target, "failed to read worker stderr: {error}");
+                    break;
+                }
+            }
+        }
+    });
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -889,6 +911,20 @@ async fn emit_snapshots_for_app(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) async fn current_health_snapshot(
+    app: &AppHandle,
+) -> Result<IngestHealthSnapshot, String> {
+    if let Some(state) = SUPERVISOR_STATE.get() {
+        return Ok(state
+            .health
+            .lock()
+            .map_err(|_| "health state poisoned".to_string())?
+            .clone());
+    }
+    let pool = open_pool(app).await?;
+    Ok(poll_dependency_health(active_job_count(&pool).await?).await)
+}
+
 async fn emit_snapshots(state: &Arc<IngestSupervisorState>) -> Result<(), String> {
     let jobs = list_jobs(&state.pool).await?;
     let alerts = list_alerts(&state.pool, 50).await?;
@@ -986,6 +1022,39 @@ fn resolve_worker_temp_dir(app_data_dir: &Path) -> Result<String, String> {
     Ok(fallback.to_string_lossy().to_string())
 }
 
+fn resolve_managed_python_bin() -> Result<PathBuf, String> {
+    if let Ok(explicit) = std::env::var("SOPHON_PYTHON_BIN") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.exists() {
+                return Ok(path);
+            }
+            return Err(format!(
+                "SOPHON_PYTHON_BIN points to a missing interpreter: {}",
+                path.to_string_lossy()
+            ));
+        }
+    }
+
+    let dev_managed = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".sophon-py312")
+        .join(if cfg!(windows) {
+            Path::new("Scripts").join("python.exe")
+        } else {
+            Path::new("bin").join("python")
+        });
+    if dev_managed.exists() {
+        return Ok(dev_managed);
+    }
+
+    Err(
+        "No managed Sophon Python runtime found. Expected .sophon-py312 or SOPHON_PYTHON_BIN."
+            .to_string(),
+    )
+}
+
 fn build_worker_candidate(
     program: String,
     prefix_args: &[&str],
@@ -1037,36 +1106,10 @@ fn spawn_worker(app: &AppHandle) -> Result<Child, String> {
         .unwrap_or_else(|_| "http://localhost:8082/v1".to_string());
     let rag_base_url = std::env::var("SOPHON_RAG_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:8081/v1".to_string());
+    let python_bin = resolve_managed_python_bin()?;
 
-    let mut candidates = Vec::new();
-    if let Ok(custom_python) = std::env::var("SOPHON_PYTHON_BIN") {
-        if !custom_python.trim().is_empty() {
-            candidates.push(build_worker_candidate(
-                custom_python,
-                &[],
-                &script_arg,
-                &db_path,
-                &worker_id,
-                &app_data_dir,
-                &ingestor_base_url,
-                &rag_base_url,
-            ));
-        }
-    }
-    if cfg!(windows) {
-        candidates.push(build_worker_candidate(
-            "py".to_string(),
-            &["-3.12"],
-            &script_arg,
-            &db_path,
-            &worker_id,
-            &app_data_dir,
-            &ingestor_base_url,
-            &rag_base_url,
-        ));
-    }
-    candidates.push(build_worker_candidate(
-        "python".to_string(),
+    let candidates = vec![build_worker_candidate(
+        python_bin.to_string_lossy().to_string(),
         &[],
         &script_arg,
         &db_path,
@@ -1074,7 +1117,7 @@ fn spawn_worker(app: &AppHandle) -> Result<Child, String> {
         &app_data_dir,
         &ingestor_base_url,
         &rag_base_url,
-    ));
+    )];
 
     let mut startup_errors = Vec::new();
     for (program, args) in candidates {
@@ -1082,7 +1125,7 @@ fn spawn_worker(app: &AppHandle) -> Result<Child, String> {
         command.args(&args);
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
-        command.stderr(Stdio::inherit());
+        command.stderr(Stdio::piped());
         command.env("SOPHON_APP_DATA_DIR", app_data_dir.as_os_str());
         command.env("TEMP_DIR", &temp_dir);
         command.env("TMPDIR", &temp_dir);
@@ -1090,7 +1133,10 @@ fn spawn_worker(app: &AppHandle) -> Result<Child, String> {
         command.env("TEMP", &temp_dir);
 
         match command.spawn() {
-            Ok(child) => {
+            Ok(mut child) => {
+                if let Some(stderr) = child.stderr.take() {
+                    spawn_worker_stderr_logger(stderr, "sophon-ingest-worker");
+                }
                 log::info!("spawned ingest worker using {}", program);
                 return Ok(child);
             }
@@ -1294,7 +1340,7 @@ async fn run_watchdog(pool: &SqlitePool) -> Result<(), String> {
     Ok(())
 }
 
-async fn poll_dependency_health(active_job_count: i64) -> IngestHealthSnapshot {
+pub(crate) async fn poll_dependency_health(active_job_count: i64) -> IngestHealthSnapshot {
     let checked_at = now_epoch_millis().unwrap_or_default();
     let ingestor = probe_json(
         "ingestor",

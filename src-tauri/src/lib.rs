@@ -2,11 +2,19 @@ mod execution_gateway;
 mod help;
 mod ingest;
 mod object_store;
+mod platform;
 mod secrets;
 mod sophon_runtime;
 mod tools;
 
 const DB_URL: &str = "sqlite:korda_tools.db";
+
+fn updater_enabled() -> bool {
+    option_env!("TAURI_UPDATER_PUBLIC_KEY")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+}
 
 fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
     vec![
@@ -147,7 +155,7 @@ fn sql_migrations() -> Vec<tauri_plugin_sql::Migration> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             secrets::secret_set,
             secrets::secret_get,
@@ -159,6 +167,10 @@ pub fn run() {
             execution_gateway::execution_gateway_http_request,
             sophon_runtime::sophon_runtime_invoke,
             sophon_runtime::sophon_runtime_shutdown,
+            platform::app_get_release_info,
+            platform::app_get_startup_status,
+            platform::app_retry_startup,
+            platform::app_collect_diagnostics,
             ingest::ingest_queue_source,
             ingest::ingest_list_jobs,
             ingest::ingest_get_job,
@@ -190,7 +202,13 @@ pub fn run() {
             tauri_plugin_sql::Builder::default()
                 .add_migrations(DB_URL, sql_migrations())
                 .build(),
-        )
+        );
+
+    if updater_enabled() {
+        app = app.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    let app = app
         .on_window_event(|window, event| {
             ingest::handle_window_event(window, event);
         })
@@ -207,6 +225,9 @@ pub fn run() {
             )?;
             ingest::setup(app.handle().clone())
                 .map_err(|error| std::io::Error::other(format!("ingest setup failed: {error}")))?;
+            platform::setup(app.handle().clone()).map_err(|error| {
+                std::io::Error::other(format!("startup supervisor setup failed: {error}"))
+            })?;
             Ok(())
         });
 

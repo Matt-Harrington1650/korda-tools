@@ -7,7 +7,12 @@ export type { FileService, RunAttachment } from './files/FileService';
 export { createNotificationService } from './notifications/factory';
 export type { NotificationService } from './notifications/NotificationService';
 export { createUpdaterService } from './updater/factory';
-export type { UpdaterService, UpdateCheckResult } from './updater/UpdaterService';
+export type {
+  UpdaterService,
+  UpdateCheckResult,
+  UpdateInstallProgress,
+  UpdateRuntimeInfo,
+} from './updater/UpdaterService';
 export { createCustomToolsLibraryService } from './customTools/factory';
 export { createHelpCenterService } from './help/factory';
 export type {

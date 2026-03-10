@@ -1,77 +1,59 @@
-# React + TypeScript + Vite
+# Korda Tools
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Korda Tools is a Windows-first desktop application built with Tauri, React, and TypeScript.
 
-Currently, two official plugins are available:
+It is the user-facing product for local engineering workflows, SOPHON ingestion, diagnostics, and governed tool execution. Internal runtime services are app-managed rather than user-managed.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Primary goals
 
-## React Compiler
+- one installable Windows desktop app
+- formal GitHub-driven releases
+- signed Tauri updater artifacts
+- in-app update checks and installation
+- app-managed startup, health, and diagnostics
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local development
 
-## Expanding the ESLint configuration
+Requirements:
+- Node.js 20+
+- Rust stable
+- Windows desktop environment for full Tauri execution
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Common commands:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm ci
+npm run typecheck
+npm run test
+npm run lint
+npm run tauri:dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`npm run version:sync` is run automatically by build and Tauri scripts so local versioned config stays aligned with `package.json`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Release system
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+The formal Windows release path is documented here:
 
-## Release docs
+- [docs/windows-release.md](docs/windows-release.md)
 
-- [Windows release and signing](docs/windows-release.md)
+Summary:
+- `main` and pull requests run CI only
+- tags matching `vX.Y.Z` or `vX.Y.Z-rc.N` trigger the Windows release workflow
+- GitHub Releases is the initial authoritative release channel
+- Tauri updater artifacts are signed and published through GitHub Actions
+
+## Runtime UX
+
+Normal users should not need PowerShell for:
+- install
+- launch
+- update
+- startup diagnostics
+
+Korda Tools exposes:
+- `Settings -> App Updates`
+- `Settings -> Startup and Runtime`
+
+These surfaces report version, update state, startup orchestration state, health probes, retry actions, and diagnostics export.
+

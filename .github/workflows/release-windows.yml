@@ -1,10 +1,10 @@
 name: release-windows
 
 on:
-  workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
+      - 'v*.*.*-rc.*'
 
 jobs:
   windows-release:
@@ -13,11 +13,16 @@ jobs:
       contents: write
     env:
       CI: true
+      KORDA_RELEASE_MODE: production
+      TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+      TAURI_UPDATER_ENDPOINT: ${{ vars.TAURI_UPDATER_ENDPOINT }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,22 +41,81 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Validate updater signing secrets
-        if: ${{ env.TAURI_SIGNING_PRIVATE_KEY == '' || env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD == '' }}
+      - name: Assert release tag + changelog alignment
+        id: release_meta
+        shell: pwsh
+        run: node ./scripts/release/assert-release-tag.mjs
+
+      - name: Set release channel
+        shell: pwsh
+        run: |
+          if ("${{ steps.release_meta.outputs.prerelease }}" -eq "true") {
+            "KORDA_RELEASE_CHANNEL=preview" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            "KORDA_RELEASE_CHANNEL=stable" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Validate updater signing inputs
         shell: bash
         run: |
-          echo "Missing TAURI_SIGNING_PRIVATE_KEY or TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
-          echo "These are required because bundle.createUpdaterArtifacts is enabled."
-          exit 1
+          if [ -z "${TAURI_UPDATER_PUBLIC_KEY}" ]; then
+            echo "Missing repository variable TAURI_UPDATER_PUBLIC_KEY."
+            echo "Production updater builds require the public updater signing key."
+            exit 1
+          fi
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ] || [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]; then
+            echo "Missing TAURI_SIGNING_PRIVATE_KEY or TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
+            echo "Production updater builds require the private updater signing key."
+            exit 1
+          fi
 
-      - name: Import optional Windows code signing certificate
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+      - name: Validate Windows signing inputs
+        id: signing_mode
+        shell: pwsh
+        run: |
+          $version = "${{ steps.release_meta.outputs.version }}"
+          $isPrerelease = "${{ steps.release_meta.outputs.prerelease }}" -eq "true"
+          $hasCert = -not [string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}")
+          $hasPassword = -not [string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}")
+          if ($hasCert -xor $hasPassword) {
+            throw "WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD must be set together."
+          }
+          if (-not $isPrerelease -and -not ($hasCert -and $hasPassword)) {
+            throw "Stable production releases require Windows Authenticode secrets."
+          }
+          if ($hasCert -and $hasPassword) {
+            "KORDA_ENABLE_WINDOWS_SIGNING=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "WINDOWS_TIMESTAMP_URL=https://timestamp.digicert.com" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            "KORDA_ENABLE_WINDOWS_SIGNING=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Render release build config
+        shell: pwsh
+        run: node ./scripts/release/prepare-tauri-config.mjs
+
+      - name: Import Windows code signing certificate
+        if: ${{ env.KORDA_ENABLE_WINDOWS_SIGNING == 'true' }}
         shell: pwsh
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
           [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String("${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}"))
-          $securePassword = ConvertTo-SecureString -String "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -AsPlainText -Force
-          Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword | Out-Null
+          "WINDOWS_CERTIFICATE_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WINDOWS_CERTIFICATE_PASSWORD=${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify Tauri release configuration
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if (-not $config.bundle.createUpdaterArtifacts) {
+            throw "bundle.createUpdaterArtifacts must be enabled for production releases."
+          }
+          if (-not $config.plugins.updater.pubkey) {
+            throw "plugins.updater.pubkey is missing from the rendered Tauri config."
+          }
+          if (-not $config.plugins.updater.endpoints -or $config.plugins.updater.endpoints.Count -lt 1) {
+            throw "At least one updater endpoint is required."
+          }
 
       - name: Build and upload Windows release artifacts
         uses: tauri-apps/tauri-action@v0
@@ -61,7 +125,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Korda Tools v__VERSION__'
-          releaseBody: 'Windows build artifacts and updater signatures.'
-          releaseDraft: true
-          prerelease: false
+          releaseName: '${{ steps.release_meta.outputs.release_name }}'
+          releaseBody: '${{ steps.release_meta.outputs.release_notes }}'
+          releaseDraft: false
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}

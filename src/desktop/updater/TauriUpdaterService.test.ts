@@ -4,10 +4,12 @@ const mockGetVersion = vi.fn();
 const mockCheck = vi.fn();
 const mockTauriApp = vi.fn();
 const mockTauriUpdater = vi.fn();
+const mockTauriInvoke = vi.fn();
 
 vi.mock('../../lib/tauri', () => {
   return {
     tauriApp: mockTauriApp,
+    tauriInvoke: mockTauriInvoke,
     tauriUpdater: mockTauriUpdater,
   };
 });
@@ -18,12 +20,19 @@ describe('TauriUpdaterService', () => {
     mockCheck.mockReset();
     mockTauriApp.mockReset();
     mockTauriUpdater.mockReset();
+    mockTauriInvoke.mockReset();
 
     mockTauriApp.mockResolvedValue({
       getVersion: mockGetVersion,
     });
     mockTauriUpdater.mockResolvedValue({
       check: mockCheck,
+    });
+    mockTauriInvoke.mockResolvedValue({
+      currentVersion: '0.0.0',
+      releaseChannel: 'stable',
+      updaterConfigured: true,
+      updaterEndpoint: 'https://example.test/latest.json',
     });
   });
 
@@ -41,14 +50,19 @@ describe('TauriUpdaterService', () => {
 
     expect(result).toEqual({
       supportedRuntime: true,
+      updaterConfigured: true,
       available: true,
       currentVersion: '1.0.0',
+      releaseChannel: 'stable',
+      updaterEndpoint: 'https://example.test/latest.json',
       latestVersion: '1.1.0',
       publishedAt: '2026-02-24T00:00:00.000Z',
       notes: 'Bug fixes and improvements.',
+      lastCheckedAt: expect.any(String),
     });
     expect(mockTauriApp).toHaveBeenCalledTimes(1);
     expect(mockTauriUpdater).toHaveBeenCalledTimes(1);
+    expect(mockTauriInvoke).toHaveBeenCalledWith('app_get_release_info');
     expect(mockGetVersion).toHaveBeenCalledTimes(1);
     expect(mockCheck).toHaveBeenCalledTimes(1);
   });
@@ -63,12 +77,15 @@ describe('TauriUpdaterService', () => {
 
     expect(result).toEqual({
       supportedRuntime: true,
+      updaterConfigured: true,
       available: false,
       currentVersion: '1.1.0',
+      releaseChannel: 'stable',
+      updaterEndpoint: 'https://example.test/latest.json',
       latestVersion: '1.1.0',
       publishedAt: null,
       notes: 'No updates available.',
+      lastCheckedAt: expect.any(String),
     });
   });
 });
-

@@ -3,8 +3,9 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
+use std::thread;
 use tauri::{AppHandle, Manager};
 
 static RUNTIME_MANAGER: OnceLock<Mutex<SophonRuntimeManager>> = OnceLock::new();
@@ -136,6 +137,26 @@ fn runtime_manager() -> &'static Mutex<SophonRuntimeManager> {
     RUNTIME_MANAGER.get_or_init(|| Mutex::new(SophonRuntimeManager::default()))
 }
 
+fn spawn_stderr_logger(stderr: ChildStderr, target: &'static str) {
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(message) => {
+                    let trimmed = message.trim();
+                    if !trimmed.is_empty() {
+                        log::warn!(target: target, "{trimmed}");
+                    }
+                }
+                Err(error) => {
+                    log::warn!(target: target, "failed to read worker stderr: {error}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
 fn resolve_worker_script_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("scripts")
@@ -163,7 +184,7 @@ fn resolve_worker_script_path(app: &AppHandle) -> Result<PathBuf, String> {
     Err("unable to locate sophon_runtime_worker.py".to_string())
 }
 
-fn resolve_korda_rag_src() -> Option<PathBuf> {
+pub(crate) fn resolve_korda_rag_src() -> Option<PathBuf> {
     if let Ok(explicit) = std::env::var("SOPHON_KORDA_RAG_SRC") {
         let path = PathBuf::from(explicit);
         if path.exists() {
@@ -182,7 +203,31 @@ fn resolve_korda_rag_src() -> Option<PathBuf> {
     None
 }
 
-fn read_sophon_api_key() -> Option<String> {
+pub(crate) fn resolve_korda_rag_root() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("SOPHON_KORDA_RAG_ROOT") {
+        let path = PathBuf::from(explicit);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    if let Some(src_path) = resolve_korda_rag_src() {
+        if let Some(parent) = src_path.parent() {
+            return Some(parent.to_path_buf());
+        }
+    }
+
+    let default_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("KORDA-RAG");
+    if default_path.exists() {
+        return Some(default_path);
+    }
+    None
+}
+
+pub(crate) fn read_sophon_api_key() -> Option<String> {
     for env_name in ["SOPHON_NVIDIA_API_KEY", "NVIDIA_API_KEY", "NGC_API_KEY"] {
         if let Ok(value) = std::env::var(env_name) {
             let trimmed = value.trim().to_string();
@@ -217,6 +262,39 @@ fn resolve_positive_env_or_default(key: &str, default_value: &str) -> String {
         .unwrap_or_else(|| default_value.to_string())
 }
 
+fn resolve_managed_python_bin() -> Result<PathBuf, String> {
+    if let Ok(explicit) = std::env::var("SOPHON_PYTHON_BIN") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.exists() {
+                return Ok(path);
+            }
+            return Err(format!(
+                "SOPHON_PYTHON_BIN points to a missing interpreter: {}",
+                path.to_string_lossy()
+            ));
+        }
+    }
+
+    let dev_managed = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".sophon-py312")
+        .join(if cfg!(windows) {
+            Path::new("Scripts").join("python.exe")
+        } else {
+            Path::new("bin").join("python")
+        });
+    if dev_managed.exists() {
+        return Ok(dev_managed);
+    }
+
+    Err(
+        "No managed Sophon Python runtime found. Expected .sophon-py312 or SOPHON_PYTHON_BIN."
+            .to_string(),
+    )
+}
+
 fn resolve_worker_temp_dir(app_data_dir: &Path) -> Result<String, String> {
     if let Ok(explicit) = std::env::var("TEMP_DIR") {
         let trimmed = explicit.trim();
@@ -242,6 +320,26 @@ fn resolve_worker_temp_dir(app_data_dir: &Path) -> Result<String, String> {
     Ok(fallback.to_string_lossy().to_string())
 }
 
+pub(crate) fn ensure_started(app: &AppHandle) -> Result<(), String> {
+    let manager = runtime_manager();
+    let mut guard = manager
+        .lock()
+        .map_err(|_| "failed to lock Sophon runtime manager".to_string())?;
+    guard.ensure_worker(app)
+}
+
+pub(crate) fn invoke_internal(
+    app: &AppHandle,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    let manager = runtime_manager();
+    let mut guard = manager
+        .lock()
+        .map_err(|_| "failed to lock Sophon runtime manager".to_string())?;
+    guard.invoke(app, method, params)
+}
+
 fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
     let script_path = resolve_worker_script_path(app)?;
     let app_data_dir = app
@@ -252,54 +350,12 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
         .map_err(|error| format!("failed to create app_data_dir for Sophon runtime: {error}"))?;
     let temp_dir = resolve_worker_temp_dir(&app_data_dir)?;
 
+    let python_bin = resolve_managed_python_bin()?;
     let script_arg = script_path.to_string_lossy().to_string();
-    let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
-    if let Ok(custom_python) = std::env::var("SOPHON_PYTHON_BIN") {
-        if !custom_python.trim().is_empty() {
-            candidates.push((custom_python, vec!["-u".to_string(), script_arg.clone()]));
-        }
-    }
-    if cfg!(windows) {
-        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            let local_python_bin = PathBuf::from(&local_app_data)
-                .join("Python")
-                .join("bin")
-                .join("python.exe");
-            if local_python_bin.exists() {
-                candidates.push((
-                    local_python_bin.to_string_lossy().to_string(),
-                    vec!["-u".to_string(), script_arg.clone()],
-                ));
-            }
-
-            for version in ["3.12", "3.11", "3.10"] {
-                let local_core = PathBuf::from(&local_app_data)
-                    .join("Python")
-                    .join(format!("pythoncore-{version}-64"))
-                    .join("python.exe");
-                if local_core.exists() {
-                    candidates.push((
-                        local_core.to_string_lossy().to_string(),
-                        vec!["-u".to_string(), script_arg.clone()],
-                    ));
-                }
-            }
-        }
-
-        candidates.push((
-            "py".to_string(),
-            vec!["-3.12".to_string(), "-u".to_string(), script_arg.clone()],
-        ));
-        candidates.push((
-            "py".to_string(),
-            vec!["-3.11".to_string(), "-u".to_string(), script_arg.clone()],
-        ));
-        candidates.push((
-            "py".to_string(),
-            vec!["-3".to_string(), "-u".to_string(), script_arg.clone()],
-        ));
-    }
-    candidates.push(("python".to_string(), vec!["-u".to_string(), script_arg]));
+    let candidates: Vec<(String, Vec<String>)> = vec![(
+        python_bin.to_string_lossy().to_string(),
+        vec!["-u".to_string(), script_arg],
+    )];
 
     let mut startup_errors = Vec::new();
     let bridge_init_timeout =
@@ -313,7 +369,7 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
         command.args(&args);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
-        command.stderr(Stdio::inherit());
+        command.stderr(Stdio::piped());
         command.env("SOPHON_APP_DATA_DIR", app_data_dir.as_os_str());
         command.env("TEMP_DIR", &temp_dir);
         command.env("TMPDIR", &temp_dir);
@@ -355,6 +411,9 @@ fn spawn_worker(app: &AppHandle) -> Result<SophonRuntimeProcess, String> {
                     .stdout
                     .take()
                     .ok_or_else(|| "failed to acquire Sophon runtime stdout".to_string())?;
+                if let Some(stderr) = child.stderr.take() {
+                    spawn_stderr_logger(stderr, "sophon-runtime-worker");
+                }
                 let mut process = SophonRuntimeProcess {
                     child,
                     stdin,

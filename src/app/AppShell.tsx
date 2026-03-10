@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { createNotificationService } from '../desktop/notifications/factory';
 import { helpCenterService } from '../features/helpCenter/service';
 import { SHOW_WELCOME_MODAL_EVENT } from '../features/helpCenter/welcome';
+import { appGetStartupStatus, usePlatformLiveBridge } from '../features/platform/runtime/api';
 import { isTauriRuntime } from '../lib/runtime';
 import { tauriEvent, tauriInvoke } from '../lib/tauri';
 
@@ -10,6 +12,12 @@ export function AppShell() {
   const navigate = useNavigate();
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [welcomeError, setWelcomeError] = useState('');
+  usePlatformLiveBridge();
+  const startupQuery = useQuery({
+    queryKey: ['platform', 'startup'],
+    queryFn: appGetStartupStatus,
+  });
+  const startupStatus = startupQuery.data;
 
   useEffect(() => {
     let mounted = true;
@@ -182,6 +190,33 @@ export function AppShell() {
               <span className="kt-chip kt-chip-accent">Secure Local</span>
             </div>
           </header>
+          {startupStatus && startupStatus.overallStatus !== 'ready' ? (
+            <div
+              className={`border-b px-4 py-3 text-sm sm:px-6 ${
+                startupStatus.overallStatus === 'blocked'
+                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-100'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold capitalize">{startupStatus.overallStatus} startup state</p>
+                  <p className="mt-1 text-xs opacity-90">{startupStatus.message}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="kt-btn kt-btn-ghost"
+                    onClick={() => {
+                      navigate('/settings');
+                    }}
+                    type="button"
+                  >
+                    Open Status
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <main className="flex-1 p-4 sm:p-6">
             <Outlet />
           </main>

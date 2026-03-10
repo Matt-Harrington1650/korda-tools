@@ -1,15 +1,17 @@
 {
   "name": "korda-tools",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run version:sync && tsc -b && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "version:sync": "node ./scripts/release/prepare-tauri-config.mjs",
+    "version:verify": "node ./scripts/release/prepare-tauri-config.mjs",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:dev": "npm run version:sync && tauri dev",
+    "tauri:build": "npm run version:sync && tauri build",
     "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"

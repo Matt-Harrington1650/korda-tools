@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Korda Tools",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "com.mattharrington.kordatools",
   "build": {
     "frontendDist": "../dist",
@@ -35,7 +35,8 @@
     ],
     "windows": {
       "webviewInstallMode": {
-        "type": "downloadBootstrapper"
+        "type": "downloadBootstrapper",
+        "silent": true
       }
     },
     "icon": [
@@ -44,7 +45,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Matt Harrington",
+    "shortDescription": "Desktop engineering workspace for Korda Tools and Sophon operations."
   },
   "plugins": {
     "sql": {
@@ -54,4 +57,3 @@
     }
   }
 }
-

@@ -2,7 +2,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { SettingsFormValues } from '../../../domain/settings';
-import { createUpdaterService, type UpdateCheckResult } from '../../../desktop';
 import { listCredentialRefs, replaceCredentialRefs } from '../../credentials/credentialService';
 import {
   createDataExportPayload,
@@ -40,16 +39,12 @@ export function SettingsPanel() {
   const [backupError, setBackupError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  const [updateError, setUpdateError] = useState('');
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [developerMode, setDeveloperMode] = useState(false);
   const [developerModeLoading, setDeveloperModeLoading] = useState(true);
   const [developerModeError, setDeveloperModeError] = useState('');
   const [developerModeMessage, setDeveloperModeMessage] = useState('');
   const [credentialIdOptions, setCredentialIdOptions] = useState<string[]>(() => [...CREDENTIAL_REF_PRESET_OPTIONS]);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
-  const updaterServiceRef = useRef(createUpdaterService());
 
   const {
     register,
@@ -215,21 +210,6 @@ export function SettingsPanel() {
     } finally {
       event.target.value = '';
       setIsImporting(false);
-    }
-  };
-
-  const handleCheckUpdates = async (): Promise<void> => {
-    setUpdateError('');
-    setIsCheckingUpdates(true);
-
-    try {
-      const result = await updaterServiceRef.current.checkForUpdates();
-      setUpdateResult(result);
-    } catch (error) {
-      setUpdateResult(null);
-      setUpdateError(error instanceof Error ? error.message : 'Failed to check for updates.');
-    } finally {
-      setIsCheckingUpdates(false);
     }
   };
 
@@ -529,44 +509,6 @@ export function SettingsPanel() {
         </label>
         {developerModeMessage ? <p className="text-xs text-emerald-700">{developerModeMessage}</p> : null}
         {developerModeError ? <p className="text-xs text-rose-700">{developerModeError}</p> : null}
-      </div>
-
-      <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
-        <div>
-          <h4 className="text-sm font-semibold text-slate-900">App Updates</h4>
-          <p className="mt-1 text-xs text-slate-600">Check for a new desktop release through the Tauri updater plugin.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-70"
-            disabled={isCheckingUpdates}
-            onClick={() => {
-              void handleCheckUpdates();
-            }}
-            type="button"
-          >
-            {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
-          </button>
-        </div>
-
-        {updateResult ? (
-          <div className="space-y-1 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700">
-            {!updateResult.supportedRuntime ? (
-              <p>{updateResult.notes}</p>
-            ) : updateResult.available ? (
-              <>
-                <p className="font-medium text-emerald-700">Update available: {updateResult.latestVersion}</p>
-                <p>Current version: {updateResult.currentVersion ?? 'n/a'}</p>
-                {updateResult.publishedAt ? <p>Published: {new Date(updateResult.publishedAt).toLocaleString()}</p> : null}
-                {updateResult.notes ? <pre className="mt-1 whitespace-pre-wrap">{updateResult.notes}</pre> : null}
-              </>
-            ) : (
-              <p className="font-medium text-slate-700">No updates available. Current version: {updateResult.currentVersion ?? 'n/a'}</p>
-            )}
-          </div>
-        ) : null}
-        {updateError ? <p className="text-xs text-rose-700">{updateError}</p> : null}
       </div>
 
       <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
